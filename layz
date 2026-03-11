@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════╗
--- ║         BRAINROT TP SYSTEM - by Claude               ║
--- ║   Enregistre ta position & TP automatique            ║
+-- ║       BRAINROT TP SYSTEM — XENO EDITION              ║
+-- ║   Compatible Xeno Executor (game.CoreGui / gethui)   ║
 -- ╚══════════════════════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -15,254 +15,233 @@ local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 --           CONFIGURATION
 -- ══════════════════════════════════════
 local CONFIG = {
-    SavedPosition = nil,        -- Position sauvegardée du joueur
-    IsStealingMode = false,     -- Mode vol actif
-    AutoTPtoBase = true,        -- TP auto quand brainrot dans base
-    DetectionRadius = 15,       -- Rayon de détection (studs)
-    BrainrotTag = "Brainrot",   -- Tag ou nom des objets brainrot
-    BaseTag = "PlayerBase",     -- Tag de la base du joueur
-    StatusMessage = "En attente...",
+    SavedPosition  = nil,
+    AutoTPtoBase   = true,
+    DetectionRadius = 15,
+    BrainrotTag    = "Brainrot",  -- Nom des objets brainrot dans le jeu
+    BaseTag        = "PlayerBase", -- Nom de la base / adapte selon le jeu
 }
+
+-- ══════════════════════════════════════
+--    COMPATIBILITE XENO / EXPLOIT
+-- ══════════════════════════════════════
+
+-- Xeno supporte gethui(), CoreGui, et sethiddenproperty
+local guiParent
+if gethui then
+    guiParent = gethui()
+elseif syn and syn.protect_gui then
+    -- Synapse fallback (au cas où)
+    local gui = Instance.new("ScreenGui")
+    syn.protect_gui(gui)
+    gui.Parent = game.CoreGui
+    guiParent = gui
+else
+    -- Fallback générique executor (Xeno, KRNL, etc.)
+    guiParent = game:GetService("CoreGui")
+end
+
+-- Fonction TP compatible Xeno
+local function teleportTo(position)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- Méthode 1: sethiddenproperty (Xeno supporté)
+    if sethiddenproperty then
+        sethiddenproperty(hrp, "CFrame", CFrame.new(position))
+    -- Méthode 2: Direct CFrame (fonctionne dans Xeno)
+    else
+        hrp.CFrame = CFrame.new(position)
+    end
+end
 
 -- ══════════════════════════════════════
 --           CREATION GUI
 -- ══════════════════════════════════════
 
+-- Nettoyage si déjà lancé
+local oldGui = game:GetService("CoreGui"):FindFirstChild("BrainrotTPXeno")
+if oldGui then oldGui:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BrainrotTPSystem"
+ScreenGui.Name = "BrainrotTPXeno"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer.PlayerGui
+
+-- Parent selon executor
+if gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = game:GetService("CoreGui")
+end
 
 -- Fenêtre principale
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 300, 0, 380)
-MainFrame.Position = UDim2.new(0, 20, 0.5, -190)
+MainFrame.Size = UDim2.new(0, 310, 0, 390)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -195)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
--- Bordure néon
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(255, 50, 150)
-UIStroke.Thickness = 2
-UIStroke.Parent = MainFrame
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
 
--- Coins arrondis
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
-UICorner.Parent = MainFrame
+local mainStroke = Instance.new("UIStroke", MainFrame)
+mainStroke.Color = Color3.fromRGB(255, 50, 150)
+mainStroke.Thickness = 2
 
--- Fond dégradé
-local UIGradient = Instance.new("UIGradient")
-UIGradient.Color = ColorSequence.new({
+local mainGrad = Instance.new("UIGradient", MainFrame)
+mainGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 10, 30)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(5, 5, 15))
 })
-UIGradient.Rotation = 135
-UIGradient.Parent = MainFrame
+mainGrad.Rotation = 135
 
 -- ══ HEADER ══
-local Header = Instance.new("Frame")
-Header.Name = "Header"
+local Header = Instance.new("Frame", MainFrame)
 Header.Size = UDim2.new(1, 0, 0, 55)
 Header.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
 Header.BorderSizePixel = 0
-Header.Parent = MainFrame
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 12)
 
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 12)
-HeaderCorner.Parent = Header
+-- Fix coins bas
+local fix = Instance.new("Frame", Header)
+fix.Size = UDim2.new(1, 0, 0, 12)
+fix.Position = UDim2.new(0, 0, 1, -12)
+fix.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+fix.BorderSizePixel = 0
 
--- Fix coin bas du header
-local HeaderFix = Instance.new("Frame")
-HeaderFix.Size = UDim2.new(1, 0, 0, 12)
-HeaderFix.Position = UDim2.new(0, 0, 1, -12)
-HeaderFix.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
-HeaderFix.BorderSizePixel = 0
-HeaderFix.Parent = Header
-
-local HeaderGradient = Instance.new("UIGradient")
-HeaderGradient.Color = ColorSequence.new({
+local hGrad = Instance.new("UIGradient", Header)
+hGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 180)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 0, 100))
 })
-HeaderGradient.Rotation = 90
-HeaderGradient.Parent = Header
+hGrad.Rotation = 90
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -50, 1, 0)
-TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+local TitleLabel = Instance.new("TextLabel", Header)
+TitleLabel.Size = UDim2.new(1, -50, 0, 30)
+TitleLabel.Position = UDim2.new(0, 12, 0, 5)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "🧠 BRAINROT TP"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 18
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = Header
 
-local SubTitle = Instance.new("TextLabel")
-SubTitle.Size = UDim2.new(1, -50, 0, 15)
-SubTitle.Position = UDim2.new(0, 15, 0, 34)
-SubTitle.BackgroundTransparency = 1
-SubTitle.Text = "Teleport System v1.0"
-SubTitle.TextColor3 = Color3.fromRGB(255, 200, 230)
-SubTitle.TextSize = 10
-SubTitle.Font = Enum.Font.Gotham
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
-SubTitle.Parent = Header
+local SubLabel = Instance.new("TextLabel", Header)
+SubLabel.Size = UDim2.new(1, -50, 0, 14)
+SubLabel.Position = UDim2.new(0, 13, 0, 35)
+SubLabel.BackgroundTransparency = 1
+SubLabel.Text = "Xeno Edition — by Claude"
+SubLabel.TextColor3 = Color3.fromRGB(255, 200, 230)
+SubLabel.TextSize = 10
+SubLabel.Font = Enum.Font.Gotham
+SubLabel.TextXAlignment = Enum.TextXAlignment.Left
 
--- Bouton fermer
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -40, 0, 12)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+local CloseBtn = Instance.new("TextButton", Header)
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -38, 0, 13)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.TextSize = 14
+CloseBtn.TextSize = 13
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.BorderSizePixel = 0
-CloseBtn.Parent = Header
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
-local CloseBtnCorner = Instance.new("UICorner")
-CloseBtnCorner.CornerRadius = UDim.new(0, 6)
-CloseBtnCorner.Parent = CloseBtn
-
--- ══ CONTENU ══
-local Content = Instance.new("Frame")
-Content.Name = "Content"
+-- ══ CONTENT ══
+local Content = Instance.new("Frame", MainFrame)
 Content.Size = UDim2.new(1, -20, 1, -70)
-Content.Position = UDim2.new(0, 10, 0, 60)
+Content.Position = UDim2.new(0, 10, 0, 62)
 Content.BackgroundTransparency = 1
-Content.Parent = MainFrame
 
-local ContentLayout = Instance.new("UIListLayout")
-ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ContentLayout.Padding = UDim.new(0, 8)
-ContentLayout.Parent = Content
+local layout = Instance.new("UIListLayout", Content)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding = UDim.new(0, 8)
 
--- ── Section: Position sauvegardée ──
-local function createSection(title, parent, order)
-    local Section = Instance.new("Frame")
-    Section.Size = UDim2.new(1, 0, 0, 100)
-    Section.BackgroundColor3 = Color3.fromRGB(20, 15, 35)
-    Section.BorderSizePixel = 0
-    Section.LayoutOrder = order
-    Section.Parent = parent
-
-    local SectionCorner = Instance.new("UICorner")
-    SectionCorner.CornerRadius = UDim.new(0, 8)
-    SectionCorner.Parent = Section
-
-    local SectionStroke = Instance.new("UIStroke")
-    SectionStroke.Color = Color3.fromRGB(60, 40, 80)
-    SectionStroke.Thickness = 1
-    SectionStroke.Parent = Section
-
-    local SectionTitle = Instance.new("TextLabel")
-    SectionTitle.Size = UDim2.new(1, -15, 0, 22)
-    SectionTitle.Position = UDim2.new(0, 10, 0, 6)
-    SectionTitle.BackgroundTransparency = 1
-    SectionTitle.Text = title
-    SectionTitle.TextColor3 = Color3.fromRGB(200, 150, 255)
-    SectionTitle.TextSize = 11
-    SectionTitle.Font = Enum.Font.GothamBold
-    SectionTitle.TextXAlignment = Enum.TextXAlignment.Left
-    SectionTitle.Parent = Section
-
-    return Section
+-- Helper: crée une section
+local function Section(title, h, order)
+    local s = Instance.new("Frame", Content)
+    s.Size = UDim2.new(1, 0, 0, h)
+    s.BackgroundColor3 = Color3.fromRGB(20, 15, 35)
+    s.BorderSizePixel = 0
+    s.LayoutOrder = order
+    Instance.new("UICorner", s).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", s)
+    stroke.Color = Color3.fromRGB(60, 40, 80)
+    stroke.Thickness = 1
+    local lbl = Instance.new("TextLabel", s)
+    lbl.Size = UDim2.new(1, -10, 0, 20)
+    lbl.Position = UDim2.new(0, 10, 0, 5)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = title
+    lbl.TextColor3 = Color3.fromRGB(200, 150, 255)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    return s
 end
 
--- ── Section Position ──
-local PosSection = createSection("📍 MA POSITION SAUVEGARDÉE", Content, 1)
-PosSection.Size = UDim2.new(1, 0, 0, 110)
+-- Helper: crée un bouton
+local function MakeBtn(parent, text, color, y, h)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(1, -20, 0, h or 32)
+    btn.Position = UDim2.new(0, 10, 0, y)
+    btn.BackgroundColor3 = color
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    return btn
+end
 
-local PosDisplay = Instance.new("TextLabel")
-PosDisplay.Name = "PosDisplay"
+-- ── Section 1: Position ──
+local PosSection = Section("📍 MA POSITION SAUVEGARDÉE", 112, 1)
+
+local PosDisplay = Instance.new("TextLabel", PosSection)
 PosDisplay.Size = UDim2.new(1, -20, 0, 28)
-PosDisplay.Position = UDim2.new(0, 10, 0, 30)
-PosDisplay.BackgroundColor3 = Color3.fromRGB(10, 8, 20)
+PosDisplay.Position = UDim2.new(0, 10, 0, 28)
+PosDisplay.BackgroundColor3 = Color3.fromRGB(8, 6, 18)
 PosDisplay.Text = "Aucune position enregistrée"
-PosDisplay.TextColor3 = Color3.fromRGB(150, 150, 150)
+PosDisplay.TextColor3 = Color3.fromRGB(130, 130, 130)
 PosDisplay.TextSize = 10
 PosDisplay.Font = Enum.Font.Code
 PosDisplay.BorderSizePixel = 0
-PosDisplay.Parent = PosSection
+Instance.new("UICorner", PosDisplay).CornerRadius = UDim.new(0, 6)
 
-local PosDisplayCorner = Instance.new("UICorner")
-PosDisplayCorner.CornerRadius = UDim.new(0, 6)
-PosDisplayCorner.Parent = PosDisplay
+local SavePosBtn = MakeBtn(PosSection, "💾  ENREGISTRER MA POSITION", Color3.fromRGB(50, 200, 100), 64)
 
--- Bouton Enregistrer Position
-local SavePosBtn = Instance.new("TextButton")
-SavePosBtn.Name = "SavePosBtn"
-SavePosBtn.Size = UDim2.new(1, -20, 0, 32)
-SavePosBtn.Position = UDim2.new(0, 10, 0, 66)
-SavePosBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
-SavePosBtn.Text = "💾  ENREGISTRER MA POSITION"
-SavePosBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SavePosBtn.TextSize = 12
-SavePosBtn.Font = Enum.Font.GothamBold
-SavePosBtn.BorderSizePixel = 0
-SavePosBtn.Parent = PosSection
+-- ── Section 2: TP Manuel ──
+local TPSection = Section("🚀 TÉLÉPORTATION MANUELLE", 78, 2)
+local TPSavedBtn = MakeBtn(TPSection, "⚡  TP VERS MA POSITION", Color3.fromRGB(80, 130, 255), 28)
 
-local SavePosBtnCorner = Instance.new("UICorner")
-SavePosBtnCorner.CornerRadius = UDim.new(0, 8)
-SavePosBtnCorner.Parent = SavePosBtn
+-- ── Section 3: Auto-TP ──
+local AutoSection = Section("🤖 AUTO-TP BRAINROT", 100, 3)
 
--- ── Section TP Manuel ──
-local TPSection = createSection("🚀 TÉLÉPORTATION", Content, 2)
-TPSection.Size = UDim2.new(1, 0, 0, 85)
+local toggleFrame = Instance.new("Frame", AutoSection)
+toggleFrame.Size = UDim2.new(1, -20, 0, 32)
+toggleFrame.Position = UDim2.new(0, 10, 0, 26)
+toggleFrame.BackgroundColor3 = Color3.fromRGB(10, 8, 20)
+toggleFrame.BorderSizePixel = 0
+Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(0, 8)
 
--- Bouton TP vers position sauvée
-local TPSavedBtn = Instance.new("TextButton")
-TPSavedBtn.Name = "TPSavedBtn"
-TPSavedBtn.Size = UDim2.new(1, -20, 0, 32)
-TPSavedBtn.Position = UDim2.new(0, 10, 0, 30)
-TPSavedBtn.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
-TPSavedBtn.Text = "⚡  TP VERS MA POSITION"
-TPSavedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-TPSavedBtn.TextSize = 12
-TPSavedBtn.Font = Enum.Font.GothamBold
-TPSavedBtn.BorderSizePixel = 0
-TPSavedBtn.Parent = TPSection
+local toggleLbl = Instance.new("TextLabel", toggleFrame)
+toggleLbl.Size = UDim2.new(1, -58, 1, 0)
+toggleLbl.Position = UDim2.new(0, 10, 0, 0)
+toggleLbl.BackgroundTransparency = 1
+toggleLbl.Text = "TP auto au vol & à la base"
+toggleLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+toggleLbl.TextSize = 11
+toggleLbl.Font = Enum.Font.Gotham
+toggleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-local TPSavedBtnCorner = Instance.new("UICorner")
-TPSavedBtnCorner.CornerRadius = UDim.new(0, 8)
-TPSavedBtnCorner.Parent = TPSavedBtn
-
--- ── Section Auto-TP ──
-local AutoSection = createSection("🤖 AUTO-TP BRAINROT", Content, 3)
-AutoSection.Size = UDim2.new(1, 0, 0, 95)
-
--- Toggle Auto-TP
-local ToggleFrame = Instance.new("Frame")
-ToggleFrame.Size = UDim2.new(1, -20, 0, 32)
-ToggleFrame.Position = UDim2.new(0, 10, 0, 28)
-ToggleFrame.BackgroundColor3 = Color3.fromRGB(10, 8, 20)
-ToggleFrame.BorderSizePixel = 0
-ToggleFrame.Parent = AutoSection
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 8)
-ToggleCorner.Parent = ToggleFrame
-
-local ToggleLabel = Instance.new("TextLabel")
-ToggleLabel.Size = UDim2.new(1, -55, 1, 0)
-ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
-ToggleLabel.BackgroundTransparency = 1
-ToggleLabel.Text = "TP Auto quand brainrot volée"
-ToggleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-ToggleLabel.TextSize = 11
-ToggleLabel.Font = Enum.Font.Gotham
-ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-ToggleLabel.Parent = ToggleFrame
-
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "ToggleBtn"
+local ToggleBtn = Instance.new("TextButton", toggleFrame)
 ToggleBtn.Size = UDim2.new(0, 44, 0, 24)
 ToggleBtn.Position = UDim2.new(1, -50, 0.5, -12)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
@@ -271,56 +250,42 @@ ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleBtn.TextSize = 10
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Parent = ToggleFrame
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 12)
 
-local ToggleBtnCorner = Instance.new("UICorner")
-ToggleBtnCorner.CornerRadius = UDim.new(0, 12)
-ToggleBtnCorner.Parent = ToggleBtn
-
--- Info détection
-local DetectInfo = Instance.new("TextLabel")
-DetectInfo.Size = UDim2.new(1, -20, 0, 22)
-DetectInfo.Position = UDim2.new(0, 10, 0, 66)
-DetectInfo.BackgroundTransparency = 1
-DetectInfo.Text = "🔍 Scan actif — rayon: " .. CONFIG.DetectionRadius .. " studs"
-DetectInfo.TextColor3 = Color3.fromRGB(100, 100, 130)
-DetectInfo.TextSize = 10
-DetectInfo.Font = Enum.Font.Gotham
-DetectInfo.TextXAlignment = Enum.TextXAlignment.Left
-DetectInfo.Parent = AutoSection
+local scanInfo = Instance.new("TextLabel", AutoSection)
+scanInfo.Size = UDim2.new(1, -20, 0, 20)
+scanInfo.Position = UDim2.new(0, 10, 0, 66)
+scanInfo.BackgroundTransparency = 1
+scanInfo.Text = "🔍 Rayon détection: " .. CONFIG.DetectionRadius .. " studs"
+scanInfo.TextColor3 = Color3.fromRGB(100, 100, 130)
+scanInfo.TextSize = 10
+scanInfo.Font = Enum.Font.Gotham
+scanInfo.TextXAlignment = Enum.TextXAlignment.Left
 
 -- ── Status Bar ──
-local StatusBar = Instance.new("Frame")
+local StatusBar = Instance.new("Frame", Content)
 StatusBar.Size = UDim2.new(1, 0, 0, 40)
 StatusBar.LayoutOrder = 4
 StatusBar.BackgroundColor3 = Color3.fromRGB(15, 10, 25)
 StatusBar.BorderSizePixel = 0
-StatusBar.Parent = Content
+Instance.new("UICorner", StatusBar).CornerRadius = UDim.new(0, 8)
+local sbStroke = Instance.new("UIStroke", StatusBar)
+sbStroke.Color = Color3.fromRGB(255, 50, 150)
+sbStroke.Thickness = 1
 
-local StatusBarCorner = Instance.new("UICorner")
-StatusBarCorner.CornerRadius = UDim.new(0, 8)
-StatusBarCorner.Parent = StatusBar
-
-local StatusStroke = Instance.new("UIStroke")
-StatusStroke.Color = Color3.fromRGB(255, 50, 150)
-StatusStroke.Thickness = 1
-StatusStroke.Parent = StatusBar
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Name = "StatusLabel"
+local StatusLabel = Instance.new("TextLabel", StatusBar)
 StatusLabel.Size = UDim2.new(1, -15, 1, 0)
 StatusLabel.Position = UDim2.new(0, 10, 0, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "⏳ " .. CONFIG.StatusMessage
+StatusLabel.Text = "⏳ En attente..."
 StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
 StatusLabel.TextSize = 11
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.TextWrapped = true
-StatusLabel.Parent = StatusBar
 
 -- ══════════════════════════════════════
---           FONCTIONS UTILITAIRES
+--           LOGIQUE
 -- ══════════════════════════════════════
 
 local function updateStatus(msg, color)
@@ -328,55 +293,41 @@ local function updateStatus(msg, color)
     StatusLabel.TextColor3 = color or Color3.fromRGB(255, 200, 100)
 end
 
-local function flashButton(btn, originalColor)
+local function flash(btn, col)
     btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     task.delay(0.15, function()
-        TweenService:Create(btn, TweenInfo.new(0.3), {
-            BackgroundColor3 = originalColor
-        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.3), {BackgroundColor3 = col}):Play()
     end)
 end
 
-local function teleportTo(position)
-    if not Character or not HumanoidRootPart then
-        Character = LocalPlayer.Character
-        if not Character then return end
-        HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-        if not HumanoidRootPart then return end
-    end
-    HumanoidRootPart.CFrame = CFrame.new(position)
-end
-
--- ══════════════════════════════════════
---           LOGIQUE PRINCIPALE
--- ══════════════════════════════════════
-
--- Enregistrer la position
+-- Enregistrer position
 SavePosBtn.MouseButton1Click:Connect(function()
-    if HumanoidRootPart then
-        CONFIG.SavedPosition = HumanoidRootPart.Position
-        local pos = CONFIG.SavedPosition
-        PosDisplay.Text = string.format("X:%.1f  Y:%.1f  Z:%.1f", pos.X, pos.Y, pos.Z)
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        CONFIG.SavedPosition = hrp.Position
+        local p = CONFIG.SavedPosition
+        PosDisplay.Text = string.format("X:%.1f  Y:%.1f  Z:%.1f", p.X, p.Y, p.Z)
         PosDisplay.TextColor3 = Color3.fromRGB(100, 255, 150)
         updateStatus("✅ Position enregistrée !", Color3.fromRGB(100, 255, 150))
-        flashButton(SavePosBtn, Color3.fromRGB(50, 200, 100))
+        flash(SavePosBtn, Color3.fromRGB(50, 200, 100))
     else
         updateStatus("❌ Personnage introuvable", Color3.fromRGB(255, 80, 80))
     end
 end)
 
--- TP vers position sauvée
+-- TP manuel
 TPSavedBtn.MouseButton1Click:Connect(function()
     if CONFIG.SavedPosition then
         teleportTo(CONFIG.SavedPosition)
-        updateStatus("⚡ Téléporté vers ta position !", Color3.fromRGB(100, 180, 255))
-        flashButton(TPSavedBtn, Color3.fromRGB(80, 130, 255))
+        updateStatus("⚡ Téléporté !", Color3.fromRGB(100, 180, 255))
+        flash(TPSavedBtn, Color3.fromRGB(80, 130, 255))
     else
-        updateStatus("⚠️ Aucune position enregistrée !", Color3.fromRGB(255, 180, 50))
+        updateStatus("⚠️ Enregistre d'abord ta position !", Color3.fromRGB(255, 180, 50))
     end
 end)
 
--- Toggle Auto-TP
+-- Toggle
 ToggleBtn.MouseButton1Click:Connect(function()
     CONFIG.AutoTPtoBase = not CONFIG.AutoTPtoBase
     if CONFIG.AutoTPtoBase then
@@ -390,54 +341,36 @@ ToggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fermer GUI
+-- Fermer
 CloseBtn.MouseButton1Click:Connect(function()
-    local tween = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+    local tw = TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
         Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(MainFrame.Position.X.Scale, MainFrame.Position.X.Offset + 150, 
-                             MainFrame.Position.Y.Scale, MainFrame.Position.Y.Offset + 190)
+        Position = UDim2.new(0, 175, 0.5, 0)
     })
-    tween:Play()
-    tween.Completed:Connect(function()
-        ScreenGui:Destroy()
-    end)
+    tw:Play()
+    tw.Completed:Connect(function() ScreenGui:Destroy() end)
 end)
 
 -- ══════════════════════════════════════
---    DETECTION AUTO BRAINROT
+--    AUTO-DETECTION (Heartbeat)
 -- ══════════════════════════════════════
 
---[[
-    SYSTÈME DE DÉTECTION:
-    
-    1. Quand tu voles une brainrot (tu la prends / elle devient toi-owned),
-       le système détecte cela et te TP à ta position sauvegardée.
-    
-    2. Quand une brainrot arrive dans TA BASE,
-       le système te TP dans ta base.
-    
-    Adapte les noms/tags selon ton jeu :
-    - CONFIG.BrainrotTag = nom ou tag des objets brainrot
-    - CONFIG.BaseTag = nom ou tag de ta base
-]]
-
-local stealCooldown = false
+local cooldown = false
 
 RunService.Heartbeat:Connect(function()
-    if not CONFIG.AutoTPtoBase then return end
-    if stealCooldown then return end
-    
+    if not CONFIG.AutoTPtoBase or cooldown then return end
+
     local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- ── Détection: Brainrot volée → TP à ma position ──
-    -- Cherche dans Workspace les objets brainrot proches du joueur
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name:lower():find(CONFIG.BrainrotTag:lower()) then
-            -- Vérifie si la brainrot est proche et vient d'être "touchée" / prise
-            local objPos = nil
+        if cooldown then break end
+
+        local nameLower = obj.Name:lower()
+        if nameLower:find(CONFIG.BrainrotTag:lower()) then
+
+            local objPos
             if obj:IsA("BasePart") then
                 objPos = obj.Position
             elseif obj:IsA("Model") and obj.PrimaryPart then
@@ -446,60 +379,46 @@ RunService.Heartbeat:Connect(function()
 
             if objPos then
                 local dist = (hrp.Position - objPos).Magnitude
-                -- Si la brainrot est très proche (on la "vol")
-                if dist < 5 then
-                    if CONFIG.SavedPosition then
-                        stealCooldown = true
-                        updateStatus("🧠 Brainrot volée! TP vers ta base...", Color3.fromRGB(255, 150, 50))
-                        task.delay(0.5, function()
-                            teleportTo(CONFIG.SavedPosition)
-                            updateStatus("✅ TP effectué après vol !", Color3.fromRGB(100, 255, 150))
-                            task.delay(3, function()
-                                stealCooldown = false
-                                updateStatus("🔍 Scan en cours...", Color3.fromRGB(200, 200, 200))
-                            end)
-                        end)
-                    end
-                end
-            end
-        end
-    end
 
-    -- ── Détection: Brainrot dans ma base → TP dans ma base ──
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name:lower():find(CONFIG.BrainrotTag:lower()) then
-            -- Cherche la base du joueur
-            local myBase = workspace:FindFirstChild(CONFIG.BaseTag)
-                or workspace:FindFirstChild(LocalPlayer.Name .. "Base")
-                or workspace:FindFirstChild(LocalPlayer.Name .. "_Base")
-            
-            if myBase then
-                local basePart = myBase:IsA("BasePart") and myBase 
-                    or (myBase:IsA("Model") and myBase.PrimaryPart)
-                    
-                if basePart then
-                    local objPos = nil
-                    if obj:IsA("BasePart") then
-                        objPos = obj.Position
-                    elseif obj:IsA("Model") and obj.PrimaryPart then
-                        objPos = obj.PrimaryPart.Position
-                    end
-                    
-                    if objPos then
+                -- CAS 1: Tu es proche de la brainrot = tu la voles → TP à ta position
+                if dist < 5 and CONFIG.SavedPosition then
+                    cooldown = true
+                    updateStatus("🧠 Brainrot volée! TP retour base...", Color3.fromRGB(255, 150, 50))
+                    task.delay(0.4, function()
+                        teleportTo(CONFIG.SavedPosition)
+                        updateStatus("✅ TP retour effectué !", Color3.fromRGB(100, 255, 150))
+                        task.delay(3, function()
+                            cooldown = false
+                            updateStatus("🔍 Scan actif...", Color3.fromRGB(180, 180, 180))
+                        end)
+                    end)
+                    break
+                end
+
+                -- CAS 2: Brainrot dans ta base → TP dans ta base
+                local myBase = workspace:FindFirstChild(CONFIG.BaseTag)
+                    or workspace:FindFirstChild(LocalPlayer.Name .. "Base")
+                    or workspace:FindFirstChild(LocalPlayer.Name .. "_Base")
+                    or workspace:FindFirstChild(LocalPlayer.Name)
+
+                if myBase then
+                    local basePart = myBase:IsA("BasePart") and myBase
+                        or (myBase:IsA("Model") and myBase.PrimaryPart)
+
+                    if basePart then
                         local distToBase = (basePart.Position - objPos).Magnitude
-                        -- Brainrot est dans/près de la base
                         if distToBase < CONFIG.DetectionRadius then
-                            stealCooldown = true
-                            updateStatus("🏠 Brainrot dans ta base! TP en cours...", Color3.fromRGB(255, 100, 200))
+                            cooldown = true
+                            updateStatus("🏠 Brainrot dans ta base! TP...", Color3.fromRGB(255, 100, 200))
                             task.delay(0.3, function()
-                                -- TP directement dans la base
                                 teleportTo(basePart.Position + Vector3.new(0, 5, 0))
-                                updateStatus("🏠 TP dans ta base effectué !", Color3.fromRGB(255, 150, 255))
+                                updateStatus("🏠 TP dans ta base !", Color3.fromRGB(255, 150, 255))
                                 task.delay(3, function()
-                                    stealCooldown = false
-                                    updateStatus("🔍 Scan en cours...", Color3.fromRGB(200, 200, 200))
+                                    cooldown = false
+                                    updateStatus("🔍 Scan actif...", Color3.fromRGB(180, 180, 180))
                                 end)
                             end)
+                            break
                         end
                     end
                 end
@@ -508,27 +427,21 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ══════════════════════════════════════
---    ANIMATION D'OUVERTURE
--- ══════════════════════════════════════
-
-MainFrame.Size = UDim2.new(0, 0, 0, 0)
-MainFrame.Position = UDim2.new(0, 170, 0.5, 0)
-
-local openTween = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.new(0, 300, 0, 380),
-    Position = UDim2.new(0, 20, 0.5, -190)
-})
-openTween:Play()
-
--- Respawn handler
+-- ══ Respawn handler ══
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     HumanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
-    updateStatus("♻️ Respawn détecté, prêt !", Color3.fromRGB(200, 200, 100))
+    cooldown = false
+    updateStatus("♻️ Respawn — prêt !", Color3.fromRGB(200, 200, 100))
 end)
 
-updateStatus("🔍 Scan actif — prêt à voler !", Color3.fromRGB(200, 200, 200))
+-- ══ Animation ouverture ══
+MainFrame.Size = UDim2.new(0, 0, 0, 0)
+MainFrame.Position = UDim2.new(0, 175, 0.5, 0)
+TweenService:Create(MainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, 310, 0, 390),
+    Position = UDim2.new(0, 20, 0.5, -195)
+}):Play()
 
-print("[BrainrotTP] Script chargé avec succès !")
-print("[BrainrotTP] Modifie CONFIG.BrainrotTag et CONFIG.BaseTag selon ton jeu")
+updateStatus("🔍 Scan actif — prêt à voler !", Color3.fromRGB(200, 200, 200))
+print("[BrainrotTP Xeno] Chargé ! Modifie CONFIG.BrainrotTag / CONFIG.BaseTag")
