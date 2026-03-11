@@ -927,15 +927,438 @@ LP.CharacterAdded:Connect(function(c)
     setStatus("♻️ Respawn — prêt !",Color3.fromRGB(200,200,100))
 end)
 
--- ── Animation ouverture ──
-Main.Size=UDim2.new(0,0,0,0)
-Main.Position=UDim2.new(0,175,0.5,0)
-TweenService:Create(Main,TweenInfo.new(0.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-    Size=UDim2.new(0,320,0,500),
-    Position=UDim2.new(0,15,0.5,-250)
-}):Play()
+-- ══════════════════════════════════════
+--  INTRO : VOITURE → FUSÉE
+-- ══════════════════════════════════════
 
-setStatus("✅ Brainrot HUB chargé ! [H] = cacher",Color3.fromRGB(150,120,255))
+-- Cache le HUB pendant l'intro
+Main.Visible = false
+
+local Intro = Instance.new("ScreenGui")
+Intro.Name = "BrainrotIntro"
+Intro.DisplayOrder = 9999
+Intro.ResetOnSpawn = false
+if gethui then Intro.Parent = gethui()
+else Intro.Parent = game:GetService("CoreGui") end
+
+-- Fond noir total
+local Bg = Instance.new("Frame", Intro)
+Bg.Size = UDim2.new(1,0,1,0)
+Bg.BackgroundColor3 = Color3.fromRGB(0,0,0)
+Bg.BorderSizePixel = 0
+Bg.ZIndex = 1
+
+-- Étoiles de fond
+local function mkStar(x, y, size, alpha)
+    local s = Instance.new("Frame", Bg)
+    s.Size = UDim2.new(0,size,0,size)
+    s.Position = UDim2.new(x,0,y,0)
+    s.BackgroundColor3 = Color3.new(1,1,1)
+    s.BackgroundTransparency = alpha
+    s.BorderSizePixel = 0
+    s.ZIndex = 2
+    Instance.new("UICorner",s).CornerRadius = UDim.new(1,0)
+    return s
+end
+local stars = {}
+math.randomseed(12345)
+for i = 1, 80 do
+    local st = mkStar(math.random()*0.95, math.random()*0.95, math.random(1,3), math.random()*0.5)
+    table.insert(stars, st)
+end
+
+-- Sol / route
+local Ground = Instance.new("Frame", Bg)
+Ground.Size = UDim2.new(1,0,0,80)
+Ground.Position = UDim2.new(0,0,1,-80)
+Ground.BackgroundColor3 = Color3.fromRGB(25,20,40)
+Ground.BorderSizePixel = 0
+Ground.ZIndex = 3
+
+local RoadLine = Instance.new("Frame", Ground)
+RoadLine.Size = UDim2.new(1,0,0,3)
+RoadLine.Position = UDim2.new(0,0,0,8)
+RoadLine.BackgroundColor3 = Color3.fromRGB(255,200,50)
+RoadLine.BorderSizePixel = 0
+RoadLine.ZIndex = 4
+
+-- Titre en haut
+local TitleIntro = Instance.new("TextLabel", Bg)
+TitleIntro.Size = UDim2.new(1,0,0,60)
+TitleIntro.Position = UDim2.new(0,0,0,30)
+TitleIntro.BackgroundTransparency = 1
+TitleIntro.Text = "🧠 BRAINROT HUB"
+TitleIntro.TextColor3 = Color3.fromRGB(180,100,255)
+TitleIntro.TextSize = 42
+TitleIntro.Font = Enum.Font.GothamBold
+TitleIntro.TextXAlignment = Enum.TextXAlignment.Center
+TitleIntro.TextTransparency = 1
+TitleIntro.ZIndex = 10
+
+local SubIntro = Instance.new("TextLabel", Bg)
+SubIntro.Size = UDim2.new(1,0,0,24)
+SubIntro.Position = UDim2.new(0,0,0,82)
+SubIntro.BackgroundTransparency = 1
+SubIntro.Text = "Xeno Edition  •  Steal a Brainrot"
+SubIntro.TextColor3 = Color3.fromRGB(200,170,255)
+SubIntro.TextSize = 16
+SubIntro.Font = Enum.Font.Gotham
+SubIntro.TextXAlignment = Enum.TextXAlignment.Center
+SubIntro.TextTransparency = 1
+SubIntro.ZIndex = 10
+
+-- ── La VOITURE (ASCII art en TextLabel) ──
+local CarFrame = Instance.new("Frame", Bg)
+CarFrame.Size = UDim2.new(0,200,0,90)
+CarFrame.Position = UDim2.new(0,-220, 1, -165)
+CarFrame.BackgroundTransparency = 1
+CarFrame.ZIndex = 5
+
+-- Corps de la voiture
+local CarBody = Instance.new("Frame", CarFrame)
+CarBody.Size = UDim2.new(0,180,0,45)
+CarBody.Position = UDim2.new(0,10,0,20)
+CarBody.BackgroundColor3 = Color3.fromRGB(220,50,100)
+CarBody.BorderSizePixel = 0
+CarBody.ZIndex = 6
+Instance.new("UICorner",CarBody).CornerRadius = UDim.new(0,10)
+
+-- Toit
+local CarRoof = Instance.new("Frame", CarFrame)
+CarRoof.Size = UDim2.new(0,110,0,30)
+CarRoof.Position = UDim2.new(0,45,0,0)
+CarRoof.BackgroundColor3 = Color3.fromRGB(240,70,120)
+CarRoof.BorderSizePixel = 0
+CarRoof.ZIndex = 6
+Instance.new("UICorner",CarRoof).CornerRadius = UDim.new(0,12)
+
+-- Fenêtre
+local CarWin = Instance.new("Frame", CarFrame)
+CarWin.Size = UDim2.new(0,80,0,20)
+CarWin.Position = UDim2.new(0,55,0,4)
+CarWin.BackgroundColor3 = Color3.fromRGB(100,200,255)
+CarWin.BackgroundTransparency = 0.2
+CarWin.BorderSizePixel = 0
+CarWin.ZIndex = 7
+Instance.new("UICorner",CarWin).CornerRadius = UDim.new(0,6)
+
+-- Roue gauche
+local WheelL = Instance.new("Frame", CarFrame)
+WheelL.Size = UDim2.new(0,36,0,36)
+WheelL.Position = UDim2.new(0,18,0,50)
+WheelL.BackgroundColor3 = Color3.fromRGB(30,30,30)
+WheelL.BorderSizePixel = 0 WheelL.ZIndex = 7
+Instance.new("UICorner",WheelL).CornerRadius = UDim.new(1,0)
+local WheelLInner = Instance.new("Frame", WheelL)
+WheelLInner.Size = UDim2.new(0,16,0,16) WheelLInner.Position = UDim2.new(0.5,-8,0.5,-8)
+WheelLInner.BackgroundColor3 = Color3.fromRGB(160,160,160) WheelLInner.BorderSizePixel=0 WheelLInner.ZIndex=8
+Instance.new("UICorner",WheelLInner).CornerRadius=UDim.new(1,0)
+
+-- Roue droite
+local WheelR = Instance.new("Frame", CarFrame)
+WheelR.Size = UDim2.new(0,36,0,36)
+WheelR.Position = UDim2.new(0,140,0,50)
+WheelR.BackgroundColor3 = Color3.fromRGB(30,30,30)
+WheelR.BorderSizePixel = 0 WheelR.ZIndex = 7
+Instance.new("UICorner",WheelR).CornerRadius = UDim.new(1,0)
+local WheelRInner = Instance.new("Frame", WheelR)
+WheelRInner.Size = UDim2.new(0,16,0,16) WheelRInner.Position = UDim2.new(0.5,-8,0.5,-8)
+WheelRInner.BackgroundColor3 = Color3.fromRGB(160,160,160) WheelRInner.BorderSizePixel=0 WheelRInner.ZIndex=8
+Instance.new("UICorner",WheelRInner).CornerRadius=UDim.new(1,0)
+
+-- Phares
+local HeadLight = Instance.new("Frame", CarFrame)
+HeadLight.Size = UDim2.new(0,16,0,12)
+HeadLight.Position = UDim2.new(0,174,0,28)
+HeadLight.BackgroundColor3 = Color3.fromRGB(255,240,100)
+HeadLight.BorderSizePixel = 0 HeadLight.ZIndex = 8
+Instance.new("UICorner",HeadLight).CornerRadius = UDim.new(0,4)
+
+-- Flammes de la voiture (cachées au début)
+local FlameFrame = Instance.new("Frame", CarFrame)
+FlameFrame.Size = UDim2.new(0,50,0,40)
+FlameFrame.Position = UDim2.new(0,-40,0,20)
+FlameFrame.BackgroundTransparency = 1
+FlameFrame.ZIndex = 5 FlameFrame.Visible = false
+
+for i=1,5 do
+    local fl = Instance.new("Frame", FlameFrame)
+    fl.Size = UDim2.new(0, math.random(12,24), 0, math.random(20,38))
+    fl.Position = UDim2.new(0, (i-1)*8, 1, -math.random(20,38))
+    fl.BackgroundColor3 = ({
+        Color3.fromRGB(255,80,0),
+        Color3.fromRGB(255,180,0),
+        Color3.fromRGB(255,50,50),
+        Color3.fromRGB(255,220,50),
+        Color3.fromRGB(255,100,20),
+    })[i]
+    fl.BorderSizePixel = 0 fl.ZIndex = 6
+    Instance.new("UICorner",fl).CornerRadius = UDim.new(0.5,0)
+end
+
+-- ── FUSÉE (cachée au début) ──
+local RocketFrame = Instance.new("Frame", Bg)
+RocketFrame.Size = UDim2.new(0,80,0,160)
+RocketFrame.Position = UDim2.new(0.5,-40,0.6,0)
+RocketFrame.BackgroundTransparency = 1
+RocketFrame.ZIndex = 5 RocketFrame.Visible = false
+
+-- Corps fusée
+local RocketBody = Instance.new("Frame", RocketFrame)
+RocketBody.Size = UDim2.new(0,60,0,110)
+RocketBody.Position = UDim2.new(0.5,-30,0,30)
+RocketBody.BackgroundColor3 = Color3.fromRGB(220,50,100)
+RocketBody.BorderSizePixel = 0 RocketBody.ZIndex = 6
+Instance.new("UICorner",RocketBody).CornerRadius = UDim.new(0,12)
+
+-- Nez de fusée
+local RocketNose = Instance.new("Frame", RocketFrame)
+RocketNose.Size = UDim2.new(0,60,0,50)
+RocketNose.Position = UDim2.new(0.5,-30,0,0)
+RocketNose.BackgroundColor3 = Color3.fromRGB(240,70,120)
+RocketNose.BorderSizePixel = 0 RocketNose.ZIndex = 7
+Instance.new("UICorner",RocketNose).CornerRadius = UDim.new(0.5,0)
+
+-- Hublot
+local RocketWindow = Instance.new("Frame", RocketFrame)
+RocketWindow.Size = UDim2.new(0,28,0,28)
+RocketWindow.Position = UDim2.new(0.5,-14,0,55)
+RocketWindow.BackgroundColor3 = Color3.fromRGB(100,200,255)
+RocketWindow.BackgroundTransparency = 0.1
+RocketWindow.BorderSizePixel = 0 RocketWindow.ZIndex = 8
+Instance.new("UICorner",RocketWindow).CornerRadius = UDim.new(1,0)
+local RocketWinRing = Instance.new("UIStroke", RocketWindow)
+RocketWinRing.Color = Color3.fromRGB(255,255,255) RocketWinRing.Thickness = 2
+
+-- Ailettes
+local function mkFin(xOff, flip)
+    local f = Instance.new("Frame", RocketFrame)
+    f.Size = UDim2.new(0,22,0,35)
+    f.Position = UDim2.new(0.5, xOff, 0, 118)
+    f.BackgroundColor3 = Color3.fromRGB(180,30,80)
+    f.BorderSizePixel = 0 f.ZIndex = 5
+    Instance.new("UICorner",f).CornerRadius = UDim.new(0,6)
+    return f
+end
+mkFin(-42, false)
+mkFin(20,  true)
+
+-- Flamme de la fusée
+local RocketFlame = Instance.new("Frame", RocketFrame)
+RocketFlame.Size = UDim2.new(0,40,0,60)
+RocketFlame.Position = UDim2.new(0.5,-20,0,140)
+RocketFlame.BackgroundColor3 = Color3.fromRGB(255,150,0)
+RocketFlame.BorderSizePixel = 0 RocketFlame.ZIndex = 6
+Instance.new("UICorner",RocketFlame).CornerRadius = UDim.new(0.5,0)
+
+local RocketFlame2 = Instance.new("Frame", RocketFrame)
+RocketFlame2.Size = UDim2.new(0,24,0,80)
+RocketFlame2.Position = UDim2.new(0.5,-12,0,150)
+RocketFlame2.BackgroundColor3 = Color3.fromRGB(255,220,50)
+RocketFlame2.BorderSizePixel = 0 RocketFlame2.ZIndex = 5
+Instance.new("UICorner",RocketFlame2).CornerRadius = UDim.new(0.5,0)
+
+-- Label de statut intro
+local LoadingLbl = Instance.new("TextLabel", Bg)
+LoadingLbl.Size = UDim2.new(1,0,0,30)
+LoadingLbl.Position = UDim2.new(0,0,1,-50)
+LoadingLbl.BackgroundTransparency = 1
+LoadingLbl.Text = "Chargement..."
+LoadingLbl.TextColor3 = Color3.fromRGB(180,150,255)
+LoadingLbl.TextSize = 14
+LoadingLbl.Font = Enum.Font.Gotham
+LoadingLbl.TextXAlignment = Enum.TextXAlignment.Center
+LoadingLbl.ZIndex = 10
+
+-- Barre de chargement
+local LoadBarBg = Instance.new("Frame", Bg)
+LoadBarBg.Size = UDim2.new(0,400,0,6)
+LoadBarBg.Position = UDim2.new(0.5,-200,1,-28)
+LoadBarBg.BackgroundColor3 = Color3.fromRGB(30,20,50)
+LoadBarBg.BorderSizePixel = 0 LoadBarBg.ZIndex = 10
+Instance.new("UICorner",LoadBarBg).CornerRadius = UDim.new(0,3)
+
+local LoadBarFill = Instance.new("Frame", LoadBarBg)
+LoadBarFill.Size = UDim2.new(0,0,1,0)
+LoadBarFill.BackgroundColor3 = Color3.fromRGB(150,80,255)
+LoadBarFill.BorderSizePixel = 0 LoadBarFill.ZIndex = 11
+Instance.new("UICorner",LoadBarFill).CornerRadius = UDim.new(0,3)
+
+-- ══════════════════════════════════════
+--  SÉQUENCE D'ANIMATION
+-- ══════════════════════════════════════
+local function tw(obj, t, style, props)
+    local info = TweenService:Create(obj, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
+    info:Play()
+    return info
+end
+
+task.spawn(function()
+    -- Scintillement des étoiles
+    for _, st in ipairs(stars) do
+        task.spawn(function()
+            while Intro and Intro.Parent do
+                task.wait(math.random()*3)
+                tw(st, 0.5, Enum.EasingStyle.Sine, {BackgroundTransparency=math.random()*0.3})
+                task.wait(0.5)
+                tw(st, 0.5, Enum.EasingStyle.Sine, {BackgroundTransparency=math.random()*0.6+0.2})
+            end
+        end)
+    end
+
+    -- 1. Titre apparaît
+    task.wait(0.2)
+    LoadingLbl.Text = "Démarrage du moteur... 🔧"
+    tw(TitleIntro, 0.8, Enum.EasingStyle.Back, {TextTransparency=0})
+    task.wait(0.4)
+    tw(SubIntro, 0.6, Enum.EasingStyle.Quad, {TextTransparency=0})
+    task.wait(0.5)
+
+    -- 2. Barre de chargement phase 1
+    LoadingLbl.Text = "Chargement de la voiture... 🚗"
+    tw(LoadBarFill, 0.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0.35,0,1,0)})
+    task.wait(0.9)
+
+    -- 3. La voiture entre par la gauche
+    LoadingLbl.Text = "Voiture détectée ! 🚗💨"
+    tw(CarFrame, 1.2, Enum.EasingStyle.Back, {Position=UDim2.new(0.5,-100,1,-165)})
+    task.wait(0.8)
+
+    -- 4. Barre phase 2
+    tw(LoadBarFill, 0.5, Enum.EasingStyle.Quad, {Size=UDim2.new(0.6,0,1,0)})
+
+    -- 5. Rotation des roues (simulation)
+    task.wait(0.3)
+    LoadingLbl.Text = "Transformation en cours... ⚙️✨"
+    task.wait(0.3)
+
+    -- 6. La voiture tremble (transformation)
+    local origPos = UDim2.new(0.5,-100,1,-165)
+    for i = 1, 8 do
+        local shakeX = (i%2==0 and 6 or -6)
+        tw(CarFrame, 0.06, Enum.EasingStyle.Linear, {Position=UDim2.new(0.5,-100+shakeX,1,-165)})
+        task.wait(0.07)
+    end
+    tw(CarFrame, 0.1, Enum.EasingStyle.Linear, {Position=origPos})
+    task.wait(0.1)
+
+    -- 7. Éclair de transformation (flash blanc)
+    LoadingLbl.Text = "🌟 TRANSFORMATION ! 🌟"
+    local Flash = Instance.new("Frame", Bg)
+    Flash.Size=UDim2.new(1,0,1,0) Flash.BackgroundColor3=Color3.new(1,1,1)
+    Flash.BackgroundTransparency=0.1 Flash.BorderSizePixel=0 Flash.ZIndex=20
+    tw(Flash, 0.4, Enum.EasingStyle.Quad, {BackgroundTransparency=1})
+    task.wait(0.2)
+
+    -- 8. Cache la voiture, montre la fusée
+    CarFrame.Visible = false
+    Flash:Destroy()
+
+    RocketFrame.Visible = true
+    RocketFrame.Position = UDim2.new(0.5,-40,0.55,0)
+    RocketFrame.Size = UDim2.new(0,0,0,0)
+
+    tw(RocketFrame, 0.5, Enum.EasingStyle.Back, {
+        Size=UDim2.new(0,80,0,160),
+        Position=UDim2.new(0.5,-40,0.45,0)
+    })
+    task.wait(0.4)
+
+    -- 9. Barre phase 3
+    tw(LoadBarFill, 0.4, Enum.EasingStyle.Quad, {Size=UDim2.new(0.85,0,1,0)})
+    LoadingLbl.Text = "🚀 Fusée prête au décollage !"
+    task.wait(0.5)
+
+    -- 10. Flamme pulse
+    for i = 1, 4 do
+        tw(RocketFlame, 0.12, Enum.EasingStyle.Sine, {Size=UDim2.new(0,50,0,75)})
+        task.wait(0.12)
+        tw(RocketFlame, 0.12, Enum.EasingStyle.Sine, {Size=UDim2.new(0,35,0,55)})
+        task.wait(0.12)
+    end
+
+    -- 11. DÉCOLLAGE
+    LoadingLbl.Text = "🔥 3... 2... 1... DÉCOLLAGE 🔥"
+    task.wait(0.3)
+
+    -- Tremblement au sol avant décollage
+    for i = 1, 6 do
+        local sh = (i%2==0 and 4 or -4)
+        tw(RocketFrame, 0.05, Enum.EasingStyle.Linear, {
+            Position=UDim2.new(0.5,-40+sh, 0.45, 0)
+        })
+        task.wait(0.06)
+    end
+
+    -- La fusée décolle !
+    tw(RocketFrame, 1.8, Enum.EasingStyle.Quad, {
+        Position=UDim2.new(0.5,-40, -0.2, 0),
+        Size=UDim2.new(0,30,0,60)
+    })
+    tw(LoadBarFill, 0.6, Enum.EasingStyle.Quad, {Size=UDim2.new(1,0,1,0)})
+
+    -- Flamme qui grandit pendant le décollage
+    tw(RocketFlame, 1.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0,80,0,130)})
+    tw(RocketFlame2, 1.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0,50,0,160)})
+
+    -- Traînée d'étoiles / particules (frames qui tombent)
+    for i = 1, 12 do
+        task.spawn(function()
+            task.wait(math.random()*1.2)
+            local spark = Instance.new("Frame", Bg)
+            spark.Size=UDim2.new(0,math.random(3,7),0,math.random(3,7))
+            spark.Position=UDim2.new(0.5,math.random(-30,30),0.45,0)
+            spark.BackgroundColor3=({
+                Color3.fromRGB(255,200,50),
+                Color3.fromRGB(255,100,30),
+                Color3.fromRGB(255,255,150),
+            })[math.random(1,3)]
+            spark.BorderSizePixel=0 spark.ZIndex=15
+            Instance.new("UICorner",spark).CornerRadius=UDim.new(1,0)
+            tw(spark, 0.8, Enum.EasingStyle.Quad, {
+                Position=UDim2.new(0.5,math.random(-60,60),0.8,0),
+                BackgroundTransparency=1,
+                Size=UDim2.new(0,1,0,1)
+            })
+            task.wait(0.9)
+            spark:Destroy()
+        end)
+    end
+
+    task.wait(1.2)
+
+    -- 12. LoadingLbl final
+    LoadingLbl.Text = "✅ Brainrot HUB prêt !"
+    LoadingLbl.TextColor3 = Color3.fromRGB(100,255,150)
+    task.wait(0.5)
+
+    -- 13. Fade out de l'intro
+    tw(Bg, 0.6, Enum.EasingStyle.Quad, {BackgroundTransparency=1})
+    for _, obj in ipairs(Bg:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("Frame") then
+            pcall(function()
+                if obj:IsA("TextLabel") then
+                    TweenService:Create(obj, TweenInfo.new(0.5), {TextTransparency=1}):Play()
+                else
+                    TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundTransparency=1}):Play()
+                end
+            end)
+        end
+    end
+    task.wait(0.7)
+    Intro:Destroy()
+
+    -- 14. Le HUB apparaît !
+    Main.Visible = true
+    Main.Size=UDim2.new(0,0,0,0)
+    Main.Position=UDim2.new(0,175,0.5,0)
+    TweenService:Create(Main,TweenInfo.new(0.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+        Size=UDim2.new(0,320,0,500),
+        Position=UDim2.new(0,15,0.5,-250)
+    }):Play()
+
+    setStatus("✅ Brainrot HUB chargé ! [H] = cacher",Color3.fromRGB(150,120,255))
+end)
 print("╔══════════════════════════════════════╗")
 print("║      BRAINROT HUB — Xeno Edition     ║")
 print("╠══════════════════════════════════════╣")
