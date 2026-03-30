@@ -1,1369 +1,328 @@
--- ╔══════════════════════════════════════════════════════════════╗
--- ║        BRAINROT HUB — Steal a Brainrot                      ║
--- ║        Xeno Compatible — Full QoL Edition                   ║
--- ║        TP • ESP • Speed • AutoFarm • BaseAlert              ║
--- ╚══════════════════════════════════════════════════════════════╝
+-- ================================================
+--   MenuGUI.lua — Compatible Xeno & Delta Executor
+--   Colle ce script directement dans l'executor
+-- ================================================
 
--- Nettoyage ancien GUI
-local function cleanOld()
-    for _, g in ipairs({game:GetService("CoreGui"), LP and LP.PlayerGui or game.Players.LocalPlayer.PlayerGui}) do
-        local o = g:FindFirstChild("BrainrotHUB") if o then o:Destroy() end
-    end
-    if gethui then local o = gethui():FindFirstChild("BrainrotHUB") if o then o:Destroy() end end
-end
-pcall(cleanOld)
-
--- ══════════════════════════════════════
---  SERVICES
--- ══════════════════════════════════════
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
+local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local UserInput    = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
-local LP    = Players.LocalPlayer
-local Cam   = workspace.CurrentCamera
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- ══════════════════════════════════════
---  ÉTAT GLOBAL
--- ══════════════════════════════════════
-local State = {
-    SavedPos      = nil,
-    AutoTP        = true,
-    ESPEnabled    = false,
-    SpeedEnabled  = false,
-    SpeedValue    = 32,       -- walkspeed (default 16)
-    JumpEnabled   = false,
-    JumpValue     = 75,       -- jumppower (default 50)
-    AutoFarm      = false,
-    BaseAlert     = true,
-    NoFall        = false,
-    InfStamina    = false,
-    Cooldown      = false,
-    ESPObjects    = {},       -- { part, billboard, line }
-    AlertedPlayers = {},
-}
-
--- ══════════════════════════════════════
---  UTILITAIRES
--- ══════════════════════════════════════
-local function getHRP()
-    local c = LP.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
-local function getHum()
-    local c = LP.Character
-    return c and c:FindFirstChildWhichIsA("Humanoid")
+-- Supprime l'ancien GUI si déjà injecté
+if playerGui:FindFirstChild("MenuGUI") then
+    playerGui:FindFirstChild("MenuGUI"):Destroy()
 end
 
-local function tpTo(pos)
-    local hrp = getHRP() if not hrp then return end
-    if sethiddenproperty then pcall(sethiddenproperty, hrp, "CFrame", CFrame.new(pos)) end
-    hrp.CFrame = CFrame.new(pos)
-end
-
-local function getMyPlot()
-    local plots = workspace:FindFirstChild("Plots") if not plots then return nil end
-    for _, p in ipairs(plots:GetChildren()) do
-        for _, vname in ipairs({"Owner","OwnerName","PlayerName"}) do
-            local v = p:FindFirstChild(vname)
-            if v and v.Value == LP.Name then return p end
-        end
-        for _, vname in ipairs({"OwnerId","OwnerID"}) do
-            local v = p:FindFirstChild(vname)
-            if v and tostring(v.Value) == tostring(LP.UserId) then return p end
-        end
-    end
-    return nil
-end
-
-local function amICarrying()
-    local c = LP.Character if not c then return false end
-    for _, v in ipairs(c:GetChildren()) do
-        if v:IsA("Model") then return true end
-        if v:IsA("StringValue") and v.Name:lower():find("carry") then return true end
-    end
-    local hrp = c:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        for _, v in ipairs(hrp:GetChildren()) do
-            if (v:IsA("Weld") or v:IsA("WeldConstraint")) then
-                local p0,p1 = v.Part0, v.Part1
-                if p1 and not c:IsAncestorOf(p1) then return true end
-                if p0 and not c:IsAncestorOf(p0) then return true end
-            end
-        end
-    end
-    for _, vname in ipairs({"Carrying","HasAnimal","IsCarrying"}) do
-        local v = c:FindFirstChild(vname) or LP:FindFirstChild(vname)
-        if v and v:IsA("BoolValue") then return v.Value end
-    end
-    return false
-end
-
-local function getAllBrainrots()
-    local list = {}
-    local plots = workspace:FindFirstChild("Plots")
-    if plots then
-        for _, plot in ipairs(plots:GetChildren()) do
-            local podiums = plot:FindFirstChild("AnimalPodiums")
-            if podiums then
-                for _, pod in ipairs(podiums:GetChildren()) do
-                    local animal = pod:FindFirstChildWhichIsA("Model") or pod:FindFirstChildWhichIsA("BasePart")
-                    if animal then
-                        local part = animal:IsA("BasePart") and animal
-                            or (animal:IsA("Model") and (animal.PrimaryPart or animal:FindFirstChildWhichIsA("BasePart")))
-                        if part then
-                            -- Cherche le nom du brainrot
-                            local name = animal.Name ~= "Model" and animal.Name or pod.Name
-                            table.insert(list, {part=part, name=name, plot=plot})
-                        end
-                    end
-                end
-            end
-        end
-    end
-    -- Fallback: cherche dans tout le workspace
-    if #list == 0 then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and (
-                obj.Name:lower():find("brainrot") or
-                obj.Name:lower():find("animal") or
-                obj.Name:lower():find("character")
-            ) then
-                table.insert(list, {part=obj, name=obj.Name, plot=nil})
-            end
-        end
-    end
-    return list
-end
-
--- ══════════════════════════════════════
---  GUI SETUP
--- ══════════════════════════════════════
+-- ================================================
+-- SCREENGUI
+-- ================================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BrainrotHUB"
+ScreenGui.Name = "MenuGUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder = 999
-if gethui then ScreenGui.Parent = gethui()
-else ScreenGui.Parent = game:GetService("CoreGui") end
 
--- ── Fenêtre principale (scrollable) ──
-local Main = Instance.new("Frame", ScreenGui)
-Main.Name = "Main"
-Main.Size = UDim2.new(0, 320, 0, 500)
-Main.Position = UDim2.new(0, 15, 0.5, -250)
-Main.BackgroundColor3 = Color3.fromRGB(9, 8, 18)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.ClipsDescendants = true
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
-local ms = Instance.new("UIStroke", Main)
-ms.Color = Color3.fromRGB(130, 60, 255)
-ms.Thickness = 2
-local mg = Instance.new("UIGradient", Main)
-mg.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 10, 28)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 5, 14))
-})
-mg.Rotation = 145
-
--- ── Header ──
-local Hdr = Instance.new("Frame", Main)
-Hdr.Size = UDim2.new(1, 0, 0, 58)
-Hdr.BackgroundColor3 = Color3.fromRGB(110, 40, 220)
-Hdr.BorderSizePixel = 0
-Instance.new("UICorner", Hdr).CornerRadius = UDim.new(0, 14)
-local hfix = Instance.new("Frame", Hdr)
-hfix.Size = UDim2.new(1,0,0,14) hfix.Position = UDim2.new(0,0,1,-14)
-hfix.BackgroundColor3 = Color3.fromRGB(110,40,220) hfix.BorderSizePixel = 0
-local hg = Instance.new("UIGradient", Hdr)
-hg.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(160,80,255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(80,20,180))
-})
-hg.Rotation = 90
-
--- Tab buttons dans le header
-local TabBtns = {}
-local ActiveTab = "TP"
-
-local function mkHdrLbl(txt, size, col, pos, sz, bold)
-    local l = Instance.new("TextLabel", Hdr)
-    l.BackgroundTransparency=1 l.Text=txt l.TextSize=size l.TextColor3=col
-    l.Position=pos l.Size=sz l.Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham
-    l.TextXAlignment=Enum.TextXAlignment.Left l.TextWrapped=true
-    return l
-end
-mkHdrLbl("🧠 BRAINROT HUB", 17, Color3.new(1,1,1), UDim2.new(0,12,0,6), UDim2.new(1,-45,0,26), true)
-mkHdrLbl("Xeno • Steal a Brainrot", 9, Color3.fromRGB(220,190,255), UDim2.new(0,13,0,30), UDim2.new(1,-45,0,14), false)
-
-local CloseBtn = Instance.new("TextButton", Hdr)
-CloseBtn.Size=UDim2.new(0,26,0,26) CloseBtn.Position=UDim2.new(1,-34,0,16)
-CloseBtn.BackgroundColor3=Color3.fromRGB(210,50,50) CloseBtn.Text="✕"
-CloseBtn.TextColor3=Color3.new(1,1,1) CloseBtn.TextSize=12 CloseBtn.Font=Enum.Font.GothamBold
-CloseBtn.BorderSizePixel=0
-Instance.new("UICorner", CloseBtn).CornerRadius=UDim.new(0,6)
-
--- ── Tab Bar ──
-local TabBar = Instance.new("Frame", Main)
-TabBar.Size = UDim2.new(1,-16,0,30)
-TabBar.Position = UDim2.new(0,8,0,62)
-TabBar.BackgroundColor3 = Color3.fromRGB(16,12,30)
-TabBar.BorderSizePixel = 0
-Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0,8)
-local tabLayout = Instance.new("UIListLayout", TabBar)
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabLayout.Padding = UDim.new(0,3)
-local tabPad = Instance.new("UIPadding", TabBar)
-tabPad.PaddingLeft=UDim.new(0,4) tabPad.PaddingRight=UDim.new(0,4)
-tabPad.PaddingTop=UDim.new(0,3) tabPad.PaddingBottom=UDim.new(0,3)
-
--- ── Scroll Content ──
-local Scroll = Instance.new("ScrollingFrame", Main)
-Scroll.Size = UDim2.new(1,-8,1,-120)
-Scroll.Position = UDim2.new(0,4,0,96)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 3
-Scroll.ScrollBarImageColor3 = Color3.fromRGB(130,60,255)
-Scroll.CanvasSize = UDim2.new(0,0,0,0)
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-
-local ScrollLayout = Instance.new("UIListLayout", Scroll)
-ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ScrollLayout.Padding = UDim.new(0,6)
-local scrollPad = Instance.new("UIPadding", Scroll)
-scrollPad.PaddingLeft=UDim.new(0,4) scrollPad.PaddingRight=UDim.new(0,4)
-scrollPad.PaddingTop=UDim.new(0,4) scrollPad.PaddingBottom=UDim.new(0,6)
-
--- ── Status bar ──
-local StatBar = Instance.new("Frame", Main)
-StatBar.Size = UDim2.new(1,-16,0,26)
-StatBar.Position = UDim2.new(0,8,1,-32)
-StatBar.BackgroundColor3 = Color3.fromRGB(14,10,26)
-StatBar.BorderSizePixel = 0
-Instance.new("UICorner", StatBar).CornerRadius = UDim.new(0,7)
-local sbsk = Instance.new("UIStroke", StatBar)
-sbsk.Color = Color3.fromRGB(130,60,255) sbsk.Thickness=1
-local StatLbl = Instance.new("TextLabel", StatBar)
-StatLbl.Size=UDim2.new(1,-10,1,0) StatLbl.Position=UDim2.new(0,8,0,0)
-StatLbl.BackgroundTransparency=1 StatLbl.Text="⏳ Prêt..."
-StatLbl.TextColor3=Color3.fromRGB(200,180,255) StatLbl.TextSize=10
-StatLbl.Font=Enum.Font.Gotham StatLbl.TextXAlignment=Enum.TextXAlignment.Left
-StatLbl.TextWrapped=true
-
-local function setStatus(msg, col)
-    StatLbl.Text = msg
-    StatLbl.TextColor3 = col or Color3.fromRGB(200,180,255)
+-- Compatibilité executor (protège le GUI)
+pcall(function()
+    ScreenGui.Parent = game:GetService("CoreGui")
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = playerGui
 end
 
--- ══════════════════════════════════════
---  HELPERS UI
--- ══════════════════════════════════════
-local function mkFrame(parent, h, order)
-    local f = Instance.new("Frame", parent)
-    f.Size=UDim2.new(1,0,0,h) f.BackgroundColor3=Color3.fromRGB(18,13,32)
-    f.BorderSizePixel=0 f.LayoutOrder=order
-    Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
-    local sk=Instance.new("UIStroke",f) sk.Color=Color3.fromRGB(50,32,72) sk.Thickness=1
-    return f
-end
+-- ================================================
+-- FENÊTRE PRINCIPALE
+-- ================================================
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 340, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -240)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local function mkLabel(parent, text, size, col, pos, sz, bold, align)
-    local l = Instance.new("TextLabel", parent)
-    l.BackgroundTransparency=1 l.Text=text l.TextSize=size or 11
-    l.TextColor3=col or Color3.fromRGB(200,200,200)
-    l.Position=pos or UDim2.new(0,0,0,0) l.Size=sz or UDim2.new(1,0,1,0)
-    l.Font=bold and Enum.Font.GothamBold or Enum.Font.Gotham
-    l.TextXAlignment=align or Enum.TextXAlignment.Left l.TextWrapped=true
-    return l
-end
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
 
-local function mkBtn(parent, text, col, pos, sz)
-    local b = Instance.new("TextButton", parent)
-    b.Size=sz or UDim2.new(1,-20,0,28) b.Position=pos or UDim2.new(0,10,0,0)
-    b.BackgroundColor3=col b.Text=text b.TextColor3=Color3.new(1,1,1)
-    b.TextSize=11 b.Font=Enum.Font.GothamBold b.BorderSizePixel=0
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,7)
-    return b
-end
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color3.fromRGB(120, 50, 210)
+MainStroke.Thickness = 2
 
-local function mkToggle(parent, label, initVal, y, onChange)
-    local row = Instance.new("Frame", parent)
-    row.Size=UDim2.new(1,-20,0,28) row.Position=UDim2.new(0,10,0,y)
-    row.BackgroundColor3=Color3.fromRGB(12,9,22) row.BorderSizePixel=0
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,7)
-    mkLabel(row, label, 10, Color3.fromRGB(190,190,200), UDim2.new(0,10,0,0), UDim2.new(1,-56,1,0))
-    local tgl = Instance.new("TextButton", row)
-    tgl.Size=UDim2.new(0,40,0,20) tgl.Position=UDim2.new(1,-46,0.5,-10)
-    tgl.Text=initVal and "ON" or "OFF"
-    tgl.TextColor3=Color3.new(1,1,1) tgl.TextSize=9 tgl.Font=Enum.Font.GothamBold
-    tgl.BackgroundColor3=initVal and Color3.fromRGB(40,180,90) or Color3.fromRGB(180,45,45)
-    tgl.BorderSizePixel=0
-    Instance.new("UICorner",tgl).CornerRadius=UDim.new(0,10)
-    local val = initVal
-    tgl.MouseButton1Click:Connect(function()
-        val = not val
-        tgl.Text=val and "ON" or "OFF"
-        TweenService:Create(tgl,TweenInfo.new(0.2),{
-            BackgroundColor3=val and Color3.fromRGB(40,180,90) or Color3.fromRGB(180,45,45)
+-- ================================================
+-- TITRE
+-- ================================================
+local TitleBar = Instance.new("Frame", MainFrame)
+TitleBar.Size = UDim2.new(1, 0, 0, 46)
+TitleBar.BackgroundColor3 = Color3.fromRGB(100, 45, 190)
+TitleBar.BorderSizePixel = 0
+
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 14)
+
+-- Fix bas titlebar
+local Fix = Instance.new("Frame", TitleBar)
+Fix.Size = UDim2.new(1, 0, 0, 14)
+Fix.Position = UDim2.new(0, 0, 1, -14)
+Fix.BackgroundColor3 = Color3.fromRGB(100, 45, 190)
+Fix.BorderSizePixel = 0
+
+local TitleLabel = Instance.new("TextLabel", TitleBar)
+TitleLabel.Text = "⚡  MON MENU"
+TitleLabel.Size = UDim2.new(1, -90, 1, 0)
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 17
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Bouton Minimiser
+local MinBtn = Instance.new("TextButton", TitleBar)
+MinBtn.Size = UDim2.new(0, 30, 0, 28)
+MinBtn.Position = UDim2.new(1, -72, 0, 9)
+MinBtn.Text = "─"
+MinBtn.TextSize = 13
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextColor3 = Color3.fromRGB(255,255,255)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+MinBtn.BorderSizePixel = 0
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+
+-- Bouton Fermer
+local CloseBtn = Instance.new("TextButton", TitleBar)
+CloseBtn.Size = UDim2.new(0, 30, 0, 28)
+CloseBtn.Position = UDim2.new(1, -38, 0, 9)
+CloseBtn.Text = "✕"
+CloseBtn.TextSize = 13
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(190, 45, 70)
+CloseBtn.BorderSizePixel = 0
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+-- ================================================
+-- CONTENU
+-- ================================================
+local Content = Instance.new("ScrollingFrame", MainFrame)
+Content.Name = "Content"
+Content.Size = UDim2.new(1, 0, 1, -46)
+Content.Position = UDim2.new(0, 0, 0, 46)
+Content.BackgroundTransparency = 1
+Content.ScrollBarThickness = 4
+Content.ScrollBarImageColor3 = Color3.fromRGB(120, 50, 210)
+Content.CanvasSize = UDim2.new(0, 0, 0, 0)
+Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Content.BorderSizePixel = 0
+
+local UIList = Instance.new("UIListLayout", Content)
+UIList.Padding = UDim.new(0, 10)
+UIList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local UIPad = Instance.new("UIPadding", Content)
+UIPad.PaddingTop = UDim.new(0, 14)
+UIPad.PaddingLeft = UDim.new(0, 14)
+UIPad.PaddingRight = UDim.new(0, 14)
+UIPad.PaddingBottom = UDim.new(0, 14)
+
+-- ================================================
+-- HELPER : Toggle
+-- ================================================
+local function createToggle(icon, labelText, defaultState, onToggle)
+    local state = defaultState or false
+
+    local Row = Instance.new("Frame", Content)
+    Row.Size = UDim2.new(1, 0, 0, 54)
+    Row.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
+    Row.BorderSizePixel = 0
+    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 10)
+    local RS = Instance.new("UIStroke", Row)
+    RS.Color = Color3.fromRGB(70, 35, 130)
+    RS.Thickness = 1
+
+    local Lbl = Instance.new("TextLabel", Row)
+    Lbl.Text = icon .. "  " .. labelText
+    Lbl.Size = UDim2.new(1, -85, 1, 0)
+    Lbl.Position = UDim2.new(0, 14, 0, 0)
+    Lbl.BackgroundTransparency = 1
+    Lbl.TextColor3 = Color3.fromRGB(210, 210, 255)
+    Lbl.TextSize = 14
+    Lbl.Font = Enum.Font.GothamSemibold
+    Lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local Pill = Instance.new("TextButton", Row)
+    Pill.Size = UDim2.new(0, 64, 0, 32)
+    Pill.Position = UDim2.new(1, -78, 0.5, -16)
+    Pill.Text = state and "ON" or "OFF"
+    Pill.TextSize = 12
+    Pill.Font = Enum.Font.GothamBold
+    Pill.TextColor3 = Color3.fromRGB(255,255,255)
+    Pill.BackgroundColor3 = state and Color3.fromRGB(80, 190, 110) or Color3.fromRGB(170, 45, 75)
+    Pill.BorderSizePixel = 0
+    Instance.new("UICorner", Pill).CornerRadius = UDim.new(0, 8)
+
+    Pill.MouseButton1Click:Connect(function()
+        state = not state
+        Pill.Text = state and "ON" or "OFF"
+        TweenService:Create(Pill, TweenInfo.new(0.18), {
+            BackgroundColor3 = state and Color3.fromRGB(80, 190, 110) or Color3.fromRGB(170, 45, 75)
         }):Play()
-        if onChange then onChange(val) end
+        pcall(onToggle, state)
     end)
-    return row, tgl
+
+    return Row
 end
 
-local function mkSlider(parent, label, min, max, initVal, y, onChange)
-    local h = 44
-    local cont = Instance.new("Frame", parent)
-    cont.Size=UDim2.new(1,-20,0,h) cont.Position=UDim2.new(0,10,0,y)
-    cont.BackgroundColor3=Color3.fromRGB(12,9,22) cont.BorderSizePixel=0
-    Instance.new("UICorner",cont).CornerRadius=UDim.new(0,7)
-    local valLbl = mkLabel(cont, label..": "..initVal, 10, Color3.fromRGB(190,190,200), UDim2.new(0,10,0,2), UDim2.new(1,-10,0,16))
-    local track = Instance.new("Frame", cont)
-    track.Size=UDim2.new(1,-20,0,6) track.Position=UDim2.new(0,10,0,26)
-    track.BackgroundColor3=Color3.fromRGB(35,25,55) track.BorderSizePixel=0
-    Instance.new("UICorner",track).CornerRadius=UDim.new(0,3)
-    local fill = Instance.new("Frame", track)
-    fill.Size=UDim2.new((initVal-min)/(max-min),0,1,0) fill.BackgroundColor3=Color3.fromRGB(130,60,255)
-    fill.BorderSizePixel=0
-    Instance.new("UICorner",fill).CornerRadius=UDim.new(0,3)
-    local knob = Instance.new("TextButton", track)
-    knob.Size=UDim2.new(0,14,0,14) knob.AnchorPoint=Vector2.new(0.5,0.5)
-    knob.Position=UDim2.new((initVal-min)/(max-min),0,0.5,0)
-    knob.BackgroundColor3=Color3.fromRGB(200,150,255) knob.Text=""
-    knob.BorderSizePixel=0
-    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
-    local dragging = false
-    knob.MouseButton1Down:Connect(function() dragging=true end)
-    UserInput.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+-- ================================================
+-- HELPER : Bouton
+-- ================================================
+local function createButton(icon, labelText, onClick)
+    local Btn = Instance.new("TextButton", Content)
+    Btn.Size = UDim2.new(1, 0, 0, 50)
+    Btn.BackgroundColor3 = Color3.fromRGB(100, 45, 190)
+    Btn.Text = icon .. "  " .. labelText
+    Btn.TextSize = 14
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextColor3 = Color3.fromRGB(255,255,255)
+    Btn.BorderSizePixel = 0
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 10)
+    local BS = Instance.new("UIStroke", Btn)
+    BS.Color = Color3.fromRGB(160, 100, 255)
+    BS.Thickness = 1.5
+
+    Btn.MouseEnter:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(130, 65, 220)}):Play()
     end)
-    RunService.Heartbeat:Connect(function()
-        if not dragging then return end
-        local mp = UserInput:GetMouseLocation()
-        local abs = track.AbsolutePosition
-        local w   = track.AbsoluteSize.X
-        local t   = math.clamp((mp.X-abs.X)/w,0,1)
-        local v   = math.floor(min + t*(max-min))
-        fill.Size = UDim2.new(t,0,1,0)
-        knob.Position = UDim2.new(t,0,0.5,0)
-        valLbl.Text = label..": "..v
-        if onChange then onChange(v) end
+    Btn.MouseLeave:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 45, 190)}):Play()
     end)
-    return cont
-end
-
--- flash button
-local function flash(btn, col)
-    local orig = btn.BackgroundColor3
-    btn.BackgroundColor3 = Color3.new(1,1,1)
-    task.delay(0.1, function()
-        TweenService:Create(btn,TweenInfo.new(0.2),{BackgroundColor3=col or orig}):Play()
-    end)
-end
-
--- ══════════════════════════════════════
---  TABS
--- ══════════════════════════════════════
-local TabPages = {}
-local tabNames = {"TP","ESP","MOVES","FARM","ALERT","DEBUG"}
-local tabIcons = {"⚡","👁","🏃","🤖","🔔","🔧"}
-
--- Create tab buttons
-for i, name in ipairs(tabNames) do
-    local tb = Instance.new("TextButton", TabBar)
-    tb.Size=UDim2.new(0, 44, 1, 0)
-    tb.BackgroundColor3 = name=="TP" and Color3.fromRGB(110,40,220) or Color3.fromRGB(20,15,35)
-    tb.Text = tabIcons[i]
-    tb.TextSize = 14
-    tb.Font = Enum.Font.GothamBold
-    tb.TextColor3 = Color3.new(1,1,1)
-    tb.BorderSizePixel = 0
-    tb.LayoutOrder = i
-    Instance.new("UICorner",tb).CornerRadius=UDim.new(0,6)
-    local tt = mkLabel(ScreenGui, name, 9, Color3.new(1,1,1), UDim2.new(0,0,0,0), UDim2.new(0,50,0,20), true, Enum.TextXAlignment.Center)
-    tt.BackgroundColor3=Color3.fromRGB(30,20,50) tt.BackgroundTransparency=0 tt.Visible=false
-    Instance.new("UICorner",tt).CornerRadius=UDim.new(0,5)
-    tb.MouseEnter:Connect(function()
-        local ap = tb.AbsolutePosition
-        tt.Position = UDim2.new(0,ap.X-5,0,ap.Y+32)
-        tt.Visible=true
-    end)
-    tb.MouseLeave:Connect(function() tt.Visible=false end)
-    TabBtns[name] = tb
-    -- Create page frame
-    local page = Instance.new("Frame", Scroll)
-    page.Size=UDim2.new(1,0,0,0) page.BackgroundTransparency=1
-    page.AutomaticSize=Enum.AutomaticSize.Y page.BorderSizePixel=0
-    page.LayoutOrder=i page.Visible=(name=="TP")
-    local pl = Instance.new("UIListLayout", page)
-    pl.SortOrder=Enum.SortOrder.LayoutOrder pl.Padding=UDim.new(0,6)
-    TabPages[name] = page
-end
-
-local function switchTab(name)
-    ActiveTab = name
-    for n, page in pairs(TabPages) do
-        page.Visible = (n==name)
-    end
-    for n, tb in pairs(TabBtns) do
-        TweenService:Create(tb,TweenInfo.new(0.15),{
-            BackgroundColor3 = n==name and Color3.fromRGB(110,40,220) or Color3.fromRGB(20,15,35)
-        }):Play()
-    end
-end
-for name, tb in pairs(TabBtns) do
-    tb.MouseButton1Click:Connect(function() switchTab(name) end)
-end
-
--- helper pour ajouter dans une page
-local function addTo(pageName, widget)
-    widget.Parent = TabPages[pageName]
-end
-
--- ══════════════════════════════════════
---  TAB: TP
--- ══════════════════════════════════════
-local function buildTP()
-    local p = TabPages["TP"]
-
-    -- Section: Position
-    local s1 = mkFrame(p, 115, 1)
-    mkLabel(s1, "📍 MA POSITION SAUVEGARDÉE", 10, Color3.fromRGB(180,130,255), UDim2.new(0,10,0,6), UDim2.new(1,-10,0,16), true)
-    local PosDisp = mkLabel(s1, "Aucune position enregistrée", 10, Color3.fromRGB(120,120,130), UDim2.new(0,10,0,26), UDim2.new(1,-20,0,22))
-    PosDisp.BackgroundColor3=Color3.fromRGB(8,5,18) PosDisp.BackgroundTransparency=0 PosDisp.Font=Enum.Font.Code
-    Instance.new("UICorner",PosDisp).CornerRadius=UDim.new(0,5)
-    local SaveBtn = mkBtn(s1, "💾  ENREGISTRER MA POSITION", Color3.fromRGB(35,170,80), UDim2.new(0,10,0,54))
-    local TPBtn   = mkBtn(s1, "⚡  TP VERS MA POSITION", Color3.fromRGB(60,110,240), UDim2.new(0,10,0,86))
-
-    SaveBtn.MouseButton1Click:Connect(function()
-        local hrp=getHRP() if not hrp then setStatus("❌ Personnage introuvable",Color3.fromRGB(240,70,70)) return end
-        State.SavedPos=hrp.Position
-        local p2=State.SavedPos
-        PosDisp.Text=string.format("X:%.1f  Y:%.1f  Z:%.1f",p2.X,p2.Y,p2.Z)
-        PosDisp.TextColor3=Color3.fromRGB(80,240,130)
-        setStatus("✅ Position sauvegardée !",Color3.fromRGB(80,240,130))
-        flash(SaveBtn,Color3.fromRGB(35,170,80))
-    end)
-    TPBtn.MouseButton1Click:Connect(function()
-        if State.SavedPos then
-            tpTo(State.SavedPos)
-            setStatus("⚡ TP effectué !",Color3.fromRGB(90,160,255))
-            flash(TPBtn,Color3.fromRGB(60,110,240))
-        else setStatus("⚠️ Enregistre d'abord ta position !",Color3.fromRGB(255,175,40)) end
-    end)
-
-    -- Section: TP aux brainrots
-    local s2 = mkFrame(p, 68, 2)
-    mkLabel(s2,"🧠 TP VERS UN BRAINROT",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    local TPBrainBtn = mkBtn(s2,"🎯  TP VERS LE BRAINROT LE PLUS PROCHE",Color3.fromRGB(200,80,50),UDim2.new(0,10,0,28))
-    TPBrainBtn.MouseButton1Click:Connect(function()
-        local hrp=getHRP() if not hrp then return end
-        local brainrots=getAllBrainrots()
-        local closest,closestDist=nil,math.huge
-        for _,b in ipairs(brainrots) do
-            local d=(hrp.Position-b.part.Position).Magnitude
-            if d<closestDist then closestDist=d closest=b end
-        end
-        if closest then
-            tpTo(closest.part.Position + Vector3.new(0,3,0))
-            setStatus("🎯 TP vers: "..closest.name,Color3.fromRGB(255,150,80))
-        else setStatus("❌ Aucun brainrot trouvé",Color3.fromRGB(240,70,70)) end
-    end)
-
-    -- Section: Auto-TP
-    local s3 = mkFrame(p, 72, 3)
-    mkLabel(s3,"🤖 AUTO-TP",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkToggle(s3,"TP auto au vol",true,26,function(v)
-        State.AutoTP=v
-        setStatus(v and "🤖 Auto-TP activé" or "🤖 Auto-TP désactivé",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-    local CarryLbl = mkLabel(s3,"🔵 Pas en train de voler",10,Color3.fromRGB(100,100,140),UDim2.new(0,12,0,58),UDim2.new(1,-14,0,14))
-    s3.Size=UDim2.new(1,0,0,78)
-
-    return CarryLbl, PosDisp
-end
-
--- ══════════════════════════════════════
---  TAB: ESP
--- ══════════════════════════════════════
-local function buildESP()
-    local p = TabPages["ESP"]
-
-    local s1 = mkFrame(p, 105, 1)
-    mkLabel(s1,"👁 ESP — BRAINROTS",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkLabel(s1,"Affiche les brainrots à travers les murs avec leur nom et distance.",10,Color3.fromRGB(150,150,160),UDim2.new(0,10,0,22),UDim2.new(1,-20,0,28))
-    mkToggle(s1,"Activer ESP brainrots",false,54,function(v)
-        State.ESPEnabled=v
-        if not v then
-            for _,d in ipairs(State.ESPObjects) do
-                pcall(function() d:Destroy() end)
-            end
-            State.ESPObjects={}
-        end
-        setStatus(v and "👁 ESP activé" or "👁 ESP désactivé",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-    mkToggle(s1,"ESP joueurs (base alarm)",false,82,function(v)
-        State.BaseAlert=v
-    end)
-    s1.Size=UDim2.new(1,0,0,116)
-
-    local s2 = mkFrame(p, 48, 2)
-    mkLabel(s2,"🎨 COULEUR ESP",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    local colors = {
-        {n="Rose",    c=Color3.fromRGB(255,80,150)},
-        {n="Vert",    c=Color3.fromRGB(80,255,120)},
-        {n="Bleu",    c=Color3.fromRGB(80,150,255)},
-        {n="Orange",  c=Color3.fromRGB(255,160,40)},
-    }
-    local ESPColor = Color3.fromRGB(255,80,150)
-    for i, col in ipairs(colors) do
-        local cb = Instance.new("TextButton", s2)
-        cb.Size=UDim2.new(0,50,0,18) cb.Position=UDim2.new(0,10+(i-1)*56,0,26)
-        cb.BackgroundColor3=col.c cb.Text=col.n cb.TextSize=9
-        cb.TextColor3=Color3.new(1,1,1) cb.Font=Enum.Font.GothamBold cb.BorderSizePixel=0
-        Instance.new("UICorner",cb).CornerRadius=UDim.new(0,5)
-        cb.MouseButton1Click:Connect(function()
-            ESPColor=col.c
-            for _, bb in ipairs(State.ESPObjects) do
-                if bb:IsA("BillboardGui") then
-                    local tl=bb:FindFirstChildWhichIsA("TextLabel")
-                    if tl then tl.TextColor3=ESPColor end
-                end
-            end
-        end)
-    end
-    s2.Size=UDim2.new(1,0,0,50)
-end
-
--- ══════════════════════════════════════
---  TAB: MOVES (Speed / Jump / NoFall)
--- ══════════════════════════════════════
-local function buildMoves()
-    local p = TabPages["MOVES"]
-
-    local s1 = mkFrame(p, 108, 1)
-    mkLabel(s1,"🏃 SPEED",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkToggle(s1,"Speed boost",false,26,function(v)
-        State.SpeedEnabled=v
-        local hum=getHum()
-        if hum then hum.WalkSpeed = v and State.SpeedValue or 16 end
-        setStatus(v and "🏃 Speed ON: "..State.SpeedValue or "🏃 Speed OFF",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-    mkSlider(s1,"Speed",16,200,32,58,function(v)
-        State.SpeedValue=v
-        if State.SpeedEnabled then
-            local hum=getHum() if hum then hum.WalkSpeed=v end
-        end
-    end)
-
-    local s2 = mkFrame(p, 108, 2)
-    mkLabel(s2,"🦘 JUMP",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkToggle(s2,"Jump boost",false,26,function(v)
-        State.JumpEnabled=v
-        local hum=getHum()
-        if hum then hum.JumpPower=v and State.JumpValue or 50 end
-        setStatus(v and "🦘 Jump ON: "..State.JumpValue or "🦘 Jump OFF",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-    mkSlider(s2,"Jump",50,500,75,58,function(v)
-        State.JumpValue=v
-        if State.JumpEnabled then
-            local hum=getHum() if hum then hum.JumpPower=v end
-        end
-    end)
-
-    local s3 = mkFrame(p, 70, 3)
-    mkLabel(s3,"⚙️ EXTRAS",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkToggle(s3,"No Fall Damage",false,26,function(v)
-        State.NoFall=v
-        setStatus(v and "🛡 No Fall activé" or "🛡 No Fall désactivé",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-    mkToggle(s3,"Inf Stamina",false,56,function(v)
-        State.InfStamina=v
-    end)
-    s3.Size=UDim2.new(1,0,0,90)
-end
-
--- ══════════════════════════════════════
---  TAB: FARM
--- ══════════════════════════════════════
-local function buildFarm()
-    local p = TabPages["FARM"]
-
-    local s1 = mkFrame(p, 130, 1)
-    mkLabel(s1,"🤖 AUTO-FARM",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkLabel(s1,"TP automatiquement vers chaque brainrot disponible sur la map, puis revient à ta base.",
-        10,Color3.fromRGB(150,150,160),UDim2.new(0,10,0,22),UDim2.new(1,-20,0,36))
-    mkToggle(s1,"Auto-Farm actif",false,62,function(v)
-        State.AutoFarm=v
-        if v and not State.SavedPos then
-            setStatus("⚠️ Enregistre ta base d'abord !",Color3.fromRGB(255,175,40))
-            State.AutoFarm=false
-        else
-            setStatus(v and "🤖 Auto-Farm démarré !" or "🤖 Auto-Farm arrêté",
-                v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-        end
-    end)
-    local FarmStatus = mkLabel(s1,"En attente...",10,Color3.fromRGB(120,120,130),UDim2.new(0,10,0,96),UDim2.new(1,-20,0,16))
-    s1.Size=UDim2.new(1,0,0,118)
-
-    local s2 = mkFrame(p, 50, 2)
-    mkLabel(s2,"🗺 LISTE DES BRAINROTS",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    local ListBtn = mkBtn(s2,"🔍 SCANNER LA MAP",Color3.fromRGB(80,60,180),UDim2.new(0,10,0,24),UDim2.new(1,-20,0,22))
-    ListBtn.TextSize=10
-    ListBtn.MouseButton1Click:Connect(function()
-        local list=getAllBrainrots()
-        setStatus("🗺 "..#list.." brainrots trouvés sur la map",Color3.fromRGB(200,180,255))
-        for _,b in ipairs(list) do
-            print("[ESP] Brainrot:", b.name, "@ X:"..math.floor(b.part.Position.X).." Z:"..math.floor(b.part.Position.Z))
-        end
-    end)
-
-    return FarmStatus
-end
-
--- ══════════════════════════════════════
---  TAB: ALERT
--- ══════════════════════════════════════
-local function buildAlert()
-    local p = TabPages["ALERT"]
-
-    local s1 = mkFrame(p, 90, 1)
-    mkLabel(s1,"🔔 ALERTE BASE",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkLabel(s1,"Notifie quand un joueur s'approche de ta base (rayon configurable).",
-        10,Color3.fromRGB(150,150,160),UDim2.new(0,10,0,22),UDim2.new(1,-20,0,28))
-    mkToggle(s1,"Alerte base activée",true,54,function(v)
-        State.BaseAlert=v
-        State.AlertedPlayers={}
-        setStatus(v and "🔔 Alerte base ON" or "🔔 Alerte base OFF",
-            v and Color3.fromRGB(80,240,130) or Color3.fromRGB(210,80,80))
-    end)
-
-    local s2 = mkFrame(p, 60, 2)
-    mkLabel(s2,"📏 RAYON D'ALERTE",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    local AlertRadius = 40
-    mkSlider(s2,"Rayon",10,150,AlertRadius,24,function(v) AlertRadius=v end)
-    s2.Size=UDim2.new(1,0,0,74)
-
-    -- Notification UI
-    local notif = Instance.new("Frame", ScreenGui)
-    notif.Size=UDim2.new(0,260,0,50) notif.Position=UDim2.new(0.5,-130,0,-60)
-    notif.BackgroundColor3=Color3.fromRGB(200,50,50) notif.BorderSizePixel=0
-    Instance.new("UICorner",notif).CornerRadius=UDim.new(0,10)
-    local notifLbl = mkLabel(notif,"⚠️ Intrus !",13,Color3.new(1,1,1),UDim2.new(0,12,0,0),UDim2.new(1,-14,1,0),true,Enum.TextXAlignment.Center)
-    notif.Visible=false
-
-    local function showNotif(msg)
-        notifLbl.Text=msg
-        notif.Visible=true
-        TweenService:Create(notif,TweenInfo.new(0.3,Enum.EasingStyle.Back),{
-            Position=UDim2.new(0.5,-130,0,10)
-        }):Play()
-        task.delay(3,function()
-            TweenService:Create(notif,TweenInfo.new(0.25),{
-                Position=UDim2.new(0.5,-130,0,-60)
-            }):Play()
-            task.delay(0.3,function() notif.Visible=false end)
-        end)
-    end
-
-    return showNotif, function() return AlertRadius end
-end
-
--- ══════════════════════════════════════
---  TAB: DEBUG
--- ══════════════════════════════════════
-local function buildDebug()
-    local p = TabPages["DEBUG"]
-
-    local s1 = mkFrame(p, 140, 1)
-    mkLabel(s1,"🔧 DEBUG",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    local DbgOut = mkLabel(s1,"Clique sur un bouton pour debugger.",10,Color3.fromRGB(150,150,160),
-        UDim2.new(0,10,0,24),UDim2.new(1,-20,0,60))
-    DbgOut.BackgroundColor3=Color3.fromRGB(8,5,18) DbgOut.BackgroundTransparency=0
-    Instance.new("UICorner",DbgOut).CornerRadius=UDim.new(0,5)
-    local db1 = mkBtn(s1,"🔍 DEBUG BASE",Color3.fromRGB(80,60,180),UDim2.new(0,10,0,90),UDim2.new(0.45,-5,0,26))
-    local db2 = mkBtn(s1,"🔍 DEBUG PERSO",Color3.fromRGB(80,60,180),UDim2.new(0.5,5,0,90),UDim2.new(0.45,-5,0,26))
-
-    db1.MouseButton1Click:Connect(function()
-        local plots=workspace:FindFirstChild("Plots")
-        if plots then
-            local myPlot=getMyPlot()
-            if myPlot then
-                DbgOut.Text="✅ Base: "..myPlot.Name
-                DbgOut.TextColor3=Color3.fromRGB(80,240,130)
-                setStatus("✅ Base: "..myPlot.Name,Color3.fromRGB(80,240,130))
-            else
-                local info=""
-                for i,pp in ipairs(plots:GetChildren()) do
-                    local o=pp:FindFirstChild("Owner") or pp:FindFirstChild("OwnerName")
-                    info=info..pp.Name.."="..(o and tostring(o.Value) or "?").." "
-                    if i>=4 then break end
-                end
-                DbgOut.Text="⚠️ "..info DbgOut.TextColor3=Color3.fromRGB(255,175,40)
-                setStatus("⚠️ "..info:sub(1,60),Color3.fromRGB(255,175,40))
-            end
-        else
-            local ws=""
-            for _,v in ipairs(workspace:GetChildren()) do ws=ws..v.Name.." " end
-            DbgOut.Text="WS: "..ws:sub(1,120) DbgOut.TextColor3=Color3.fromRGB(255,175,40)
-        end
-    end)
-
-    db2.MouseButton1Click:Connect(function()
-        local c=LP.Character
-        if c then
-            local info=""
-            for _,v in ipairs(c:GetChildren()) do info=info..v.Name.."("..v.ClassName..") " end
-            DbgOut.Text=info:sub(1,200) DbgOut.TextColor3=Color3.fromRGB(200,180,255)
-            print("[DEBUG PERSO]",info)
-            print("[DEBUG] Carrying:",amICarrying())
-        end
-    end)
-
-    local s2 = mkFrame(p, 48, 2)
-    mkLabel(s2,"⌨️ RACCOURCIS",10,Color3.fromRGB(180,130,255),UDim2.new(0,10,0,6),UDim2.new(1,-10,0,16),true)
-    mkLabel(s2,"[H] Afficher/Cacher GUI     [F] TP vers position sauvée",10,Color3.fromRGB(150,150,160),UDim2.new(0,10,0,24),UDim2.new(1,-20,0,20))
-end
-
--- ══════════════════════════════════════
---  BUILD ALL TABS
--- ══════════════════════════════════════
-local CarryLbl, PosDisp2 = buildTP()
-buildESP()
-buildMoves()
-local FarmStatusLbl = buildFarm()
-local showNotif, getAlertRadius = buildAlert()
-buildDebug()
-
--- ══════════════════════════════════════
---  CLOSE BUTTON
--- ══════════════════════════════════════
-CloseBtn.MouseButton1Click:Connect(function()
-    local tw=TweenService:Create(Main,TweenInfo.new(0.22,Enum.EasingStyle.Back),{
-        Size=UDim2.new(0,0,0,0),
-        Position=UDim2.new(0,175,0.5,0)
-    })
-    tw:Play()
-    tw.Completed:Connect(function() ScreenGui:Destroy() end)
-end)
-
--- ══════════════════════════════════════
---  KEYBINDS
--- ══════════════════════════════════════
-UserInput.InputBegan:Connect(function(inp, gpe)
-    if gpe then return end
-    if inp.KeyCode == Enum.KeyCode.H then
-        Main.Visible = not Main.Visible
-    elseif inp.KeyCode == Enum.KeyCode.F then
-        if State.SavedPos then
-            tpTo(State.SavedPos)
-            setStatus("⚡ TP rapide [F] !",Color3.fromRGB(90,160,255))
-        end
-    end
-end)
-
--- ══════════════════════════════════════
---  HEARTBEAT — toute la logique auto
--- ══════════════════════════════════════
-local wasCarrying = false
-local farmStep = 0
-local farmBrainrots = {}
-local farmIndex = 1
-local farmPhase = "goto" -- "goto" | "return"
-local espTimer = 0
-local alertTimer = 0
-
-RunService.Heartbeat:Connect(function(dt)
-    local hrp = getHRP()
-    local hum = getHum()
-
-    -- ── Speed / Jump maintien ──
-    if hum then
-        if State.SpeedEnabled then hum.WalkSpeed = State.SpeedValue end
-        if State.JumpEnabled  then hum.JumpPower  = State.JumpValue  end
-        if State.NoFall and hum.Health < 100 then
-            -- reset fall via health (simple)
-        end
-        if State.InfStamina then
-            -- reset stamina si le jeu en a une
-            local stam = LP.Character and LP.Character:FindFirstChild("Stamina")
-            if stam and stam:IsA("NumberValue") then stam.Value = stam.Value < 5 and 100 or stam.Value end
-        end
-    end
-
-    -- ── Auto-TP vol ──
-    if State.AutoTP and hrp and not State.Cooldown then
-        local nowCarrying = amICarrying()
-        if nowCarrying ~= wasCarrying then
-            wasCarrying = nowCarrying
-            if nowCarrying then
-                CarryLbl.Text="🔴 Tu portes un brainrot !"
-                CarryLbl.TextColor3=Color3.fromRGB(255,80,80)
-                if State.SavedPos then
-                    State.Cooldown=true
-                    setStatus("🧠 Vol ! TP retour base...",Color3.fromRGB(255,140,40))
-                    task.delay(0.3,function()
-                        tpTo(State.SavedPos)
-                        setStatus("✅ TP base effectué !",Color3.fromRGB(80,240,130))
-                        task.delay(4,function() State.Cooldown=false setStatus("🔍 Scan...",Color3.fromRGB(170,170,170)) end)
-                    end)
-                end
-            else
-                CarryLbl.Text="🔵 Pas en train de voler"
-                CarryLbl.TextColor3=Color3.fromRGB(100,100,140)
-            end
-        end
-    end
-
-    -- ── ESP ──
-    espTimer = espTimer + dt
-    if State.ESPEnabled and espTimer > 0.5 then
-        espTimer = 0
-        -- Destroy old ESP
-        for _, bb in ipairs(State.ESPObjects) do pcall(function() bb:Destroy() end) end
-        State.ESPObjects = {}
-        local brainrots = getAllBrainrots()
-        for _, b in ipairs(brainrots) do
-            if b.part and b.part.Parent then
-                local bb = Instance.new("BillboardGui", b.part)
-                bb.Size=UDim2.new(0,120,0,40) bb.StudsOffset=Vector3.new(0,3,0)
-                bb.AlwaysOnTop=true bb.LightInfluence=0
-                local tl = Instance.new("TextLabel", bb)
-                tl.Size=UDim2.new(1,0,0.6,0) tl.BackgroundTransparency=1
-                tl.Text=b.name tl.TextColor3=Color3.fromRGB(255,80,150)
-                tl.TextSize=12 tl.Font=Enum.Font.GothamBold tl.TextStrokeTransparency=0.4
-                local dl = Instance.new("TextLabel", bb)
-                dl.Size=UDim2.new(1,0,0.4,0) dl.Position=UDim2.new(0,0,0.6,0)
-                dl.BackgroundTransparency=1 dl.TextColor3=Color3.fromRGB(200,200,255)
-                dl.TextSize=9 dl.Font=Enum.Font.Gotham dl.TextStrokeTransparency=0.5
-                if hrp then
-                    dl.Text=math.floor((hrp.Position-b.part.Position).Magnitude).." studs"
-                end
-                table.insert(State.ESPObjects, bb)
-            end
-        end
-    elseif not State.ESPEnabled and #State.ESPObjects > 0 then
-        for _,bb in ipairs(State.ESPObjects) do pcall(function() bb:Destroy() end) end
-        State.ESPObjects={}
-    end
-
-    -- ── Auto-Farm ──
-    if State.AutoFarm and hrp and State.SavedPos and not State.Cooldown then
-        farmStep = farmStep + dt
-        if farmStep > 1.5 then
-            farmStep = 0
-            if farmPhase == "goto" then
-                farmBrainrots = getAllBrainrots()
-                if #farmBrainrots == 0 then
-                    FarmStatusLbl.Text="Aucun brainrot trouvé..."
-                    FarmStatusLbl.TextColor3=Color3.fromRGB(200,100,100)
-                else
-                    if farmIndex > #farmBrainrots then farmIndex=1 end
-                    local target = farmBrainrots[farmIndex]
-                    if target and target.part and target.part.Parent then
-                        tpTo(target.part.Position + Vector3.new(0,3,0))
-                        FarmStatusLbl.Text="🎯 Vol: "..target.name
-                        FarmStatusLbl.TextColor3=Color3.fromRGB(255,180,80)
-                        farmPhase="return"
-                        farmIndex=farmIndex+1
-                    end
-                end
-            elseif farmPhase == "return" then
-                tpTo(State.SavedPos)
-                FarmStatusLbl.Text="🏠 Retour base..."
-                FarmStatusLbl.TextColor3=Color3.fromRGB(100,200,255)
-                farmPhase="goto"
-            end
-        end
-    end
-
-    -- ── Base Alert ──
-    alertTimer = alertTimer + dt
-    if State.BaseAlert and alertTimer > 1.5 then
-        alertTimer = 0
-        local myPlot = getMyPlot()
-        local basePart = myPlot and (myPlot:FindFirstChild("Base") or myPlot.PrimaryPart)
-        if basePart then
-            local bpos = basePart:IsA("BasePart") and basePart.Position
-                or (basePart.PrimaryPart and basePart.PrimaryPart.Position)
-            if bpos then
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= LP then
-                        local pc = plr.Character
-                        local phrp = pc and pc:FindFirstChild("HumanoidRootPart")
-                        if phrp then
-                            local dist=(bpos-phrp.Position).Magnitude
-                            if dist < getAlertRadius() then
-                                if not State.AlertedPlayers[plr.Name] then
-                                    State.AlertedPlayers[plr.Name]=true
-                                    showNotif("⚠️ "..plr.Name.." approche ta base !")
-                                    setStatus("🔔 ALERTE: "..plr.Name.." s'approche !",Color3.fromRGB(255,80,80))
-                                end
-                            else
-                                State.AlertedPlayers[plr.Name]=nil
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- ── Respawn ──
-LP.CharacterAdded:Connect(function(c)
-    task.wait(0.5)
-    wasCarrying=false State.Cooldown=false
-    setStatus("♻️ Respawn — prêt !",Color3.fromRGB(200,200,100))
-end)
-
--- ══════════════════════════════════════
---  INTRO : VOITURE → FUSÉE
--- ══════════════════════════════════════
-
--- Cache le HUB pendant l'intro
-Main.Visible = false
-
-local Intro = Instance.new("ScreenGui")
-Intro.Name = "BrainrotIntro"
-Intro.DisplayOrder = 9999
-Intro.ResetOnSpawn = false
-if gethui then Intro.Parent = gethui()
-else Intro.Parent = game:GetService("CoreGui") end
-
--- Fond noir total
-local Bg = Instance.new("Frame", Intro)
-Bg.Size = UDim2.new(1,0,1,0)
-Bg.BackgroundColor3 = Color3.fromRGB(0,0,0)
-Bg.BorderSizePixel = 0
-Bg.ZIndex = 1
-
--- Étoiles de fond
-local function mkStar(x, y, size, alpha)
-    local s = Instance.new("Frame", Bg)
-    s.Size = UDim2.new(0,size,0,size)
-    s.Position = UDim2.new(x,0,y,0)
-    s.BackgroundColor3 = Color3.new(1,1,1)
-    s.BackgroundTransparency = alpha
-    s.BorderSizePixel = 0
-    s.ZIndex = 2
-    Instance.new("UICorner",s).CornerRadius = UDim.new(1,0)
-    return s
-end
-local stars = {}
-math.randomseed(12345)
-for i = 1, 80 do
-    local st = mkStar(math.random()*0.95, math.random()*0.95, math.random(1,3), math.random()*0.5)
-    table.insert(stars, st)
-end
-
--- Sol / route
-local Ground = Instance.new("Frame", Bg)
-Ground.Size = UDim2.new(1,0,0,80)
-Ground.Position = UDim2.new(0,0,1,-80)
-Ground.BackgroundColor3 = Color3.fromRGB(25,20,40)
-Ground.BorderSizePixel = 0
-Ground.ZIndex = 3
-
-local RoadLine = Instance.new("Frame", Ground)
-RoadLine.Size = UDim2.new(1,0,0,3)
-RoadLine.Position = UDim2.new(0,0,0,8)
-RoadLine.BackgroundColor3 = Color3.fromRGB(255,200,50)
-RoadLine.BorderSizePixel = 0
-RoadLine.ZIndex = 4
-
--- Titre en haut
-local TitleIntro = Instance.new("TextLabel", Bg)
-TitleIntro.Size = UDim2.new(1,0,0,60)
-TitleIntro.Position = UDim2.new(0,0,0,30)
-TitleIntro.BackgroundTransparency = 1
-TitleIntro.Text = "🧠 BRAINROT HUB"
-TitleIntro.TextColor3 = Color3.fromRGB(180,100,255)
-TitleIntro.TextSize = 42
-TitleIntro.Font = Enum.Font.GothamBold
-TitleIntro.TextXAlignment = Enum.TextXAlignment.Center
-TitleIntro.TextTransparency = 1
-TitleIntro.ZIndex = 10
-
-local SubIntro = Instance.new("TextLabel", Bg)
-SubIntro.Size = UDim2.new(1,0,0,24)
-SubIntro.Position = UDim2.new(0,0,0,82)
-SubIntro.BackgroundTransparency = 1
-SubIntro.Text = "Xeno Edition  •  Steal a Brainrot"
-SubIntro.TextColor3 = Color3.fromRGB(200,170,255)
-SubIntro.TextSize = 16
-SubIntro.Font = Enum.Font.Gotham
-SubIntro.TextXAlignment = Enum.TextXAlignment.Center
-SubIntro.TextTransparency = 1
-SubIntro.ZIndex = 10
-
--- ── La VOITURE (ASCII art en TextLabel) ──
-local CarFrame = Instance.new("Frame", Bg)
-CarFrame.Size = UDim2.new(0,200,0,90)
-CarFrame.Position = UDim2.new(0,-220, 1, -165)
-CarFrame.BackgroundTransparency = 1
-CarFrame.ZIndex = 5
-
--- Corps de la voiture
-local CarBody = Instance.new("Frame", CarFrame)
-CarBody.Size = UDim2.new(0,180,0,45)
-CarBody.Position = UDim2.new(0,10,0,20)
-CarBody.BackgroundColor3 = Color3.fromRGB(220,50,100)
-CarBody.BorderSizePixel = 0
-CarBody.ZIndex = 6
-Instance.new("UICorner",CarBody).CornerRadius = UDim.new(0,10)
-
--- Toit
-local CarRoof = Instance.new("Frame", CarFrame)
-CarRoof.Size = UDim2.new(0,110,0,30)
-CarRoof.Position = UDim2.new(0,45,0,0)
-CarRoof.BackgroundColor3 = Color3.fromRGB(240,70,120)
-CarRoof.BorderSizePixel = 0
-CarRoof.ZIndex = 6
-Instance.new("UICorner",CarRoof).CornerRadius = UDim.new(0,12)
-
--- Fenêtre
-local CarWin = Instance.new("Frame", CarFrame)
-CarWin.Size = UDim2.new(0,80,0,20)
-CarWin.Position = UDim2.new(0,55,0,4)
-CarWin.BackgroundColor3 = Color3.fromRGB(100,200,255)
-CarWin.BackgroundTransparency = 0.2
-CarWin.BorderSizePixel = 0
-CarWin.ZIndex = 7
-Instance.new("UICorner",CarWin).CornerRadius = UDim.new(0,6)
-
--- Roue gauche
-local WheelL = Instance.new("Frame", CarFrame)
-WheelL.Size = UDim2.new(0,36,0,36)
-WheelL.Position = UDim2.new(0,18,0,50)
-WheelL.BackgroundColor3 = Color3.fromRGB(30,30,30)
-WheelL.BorderSizePixel = 0 WheelL.ZIndex = 7
-Instance.new("UICorner",WheelL).CornerRadius = UDim.new(1,0)
-local WheelLInner = Instance.new("Frame", WheelL)
-WheelLInner.Size = UDim2.new(0,16,0,16) WheelLInner.Position = UDim2.new(0.5,-8,0.5,-8)
-WheelLInner.BackgroundColor3 = Color3.fromRGB(160,160,160) WheelLInner.BorderSizePixel=0 WheelLInner.ZIndex=8
-Instance.new("UICorner",WheelLInner).CornerRadius=UDim.new(1,0)
-
--- Roue droite
-local WheelR = Instance.new("Frame", CarFrame)
-WheelR.Size = UDim2.new(0,36,0,36)
-WheelR.Position = UDim2.new(0,140,0,50)
-WheelR.BackgroundColor3 = Color3.fromRGB(30,30,30)
-WheelR.BorderSizePixel = 0 WheelR.ZIndex = 7
-Instance.new("UICorner",WheelR).CornerRadius = UDim.new(1,0)
-local WheelRInner = Instance.new("Frame", WheelR)
-WheelRInner.Size = UDim2.new(0,16,0,16) WheelRInner.Position = UDim2.new(0.5,-8,0.5,-8)
-WheelRInner.BackgroundColor3 = Color3.fromRGB(160,160,160) WheelRInner.BorderSizePixel=0 WheelRInner.ZIndex=8
-Instance.new("UICorner",WheelRInner).CornerRadius=UDim.new(1,0)
-
--- Phares
-local HeadLight = Instance.new("Frame", CarFrame)
-HeadLight.Size = UDim2.new(0,16,0,12)
-HeadLight.Position = UDim2.new(0,174,0,28)
-HeadLight.BackgroundColor3 = Color3.fromRGB(255,240,100)
-HeadLight.BorderSizePixel = 0 HeadLight.ZIndex = 8
-Instance.new("UICorner",HeadLight).CornerRadius = UDim.new(0,4)
-
--- Flammes de la voiture (cachées au début)
-local FlameFrame = Instance.new("Frame", CarFrame)
-FlameFrame.Size = UDim2.new(0,50,0,40)
-FlameFrame.Position = UDim2.new(0,-40,0,20)
-FlameFrame.BackgroundTransparency = 1
-FlameFrame.ZIndex = 5 FlameFrame.Visible = false
-
-for i=1,5 do
-    local fl = Instance.new("Frame", FlameFrame)
-    fl.Size = UDim2.new(0, math.random(12,24), 0, math.random(20,38))
-    fl.Position = UDim2.new(0, (i-1)*8, 1, -math.random(20,38))
-    fl.BackgroundColor3 = ({
-        Color3.fromRGB(255,80,0),
-        Color3.fromRGB(255,180,0),
-        Color3.fromRGB(255,50,50),
-        Color3.fromRGB(255,220,50),
-        Color3.fromRGB(255,100,20),
-    })[i]
-    fl.BorderSizePixel = 0 fl.ZIndex = 6
-    Instance.new("UICorner",fl).CornerRadius = UDim.new(0.5,0)
-end
-
--- ── FUSÉE (cachée au début) ──
-local RocketFrame = Instance.new("Frame", Bg)
-RocketFrame.Size = UDim2.new(0,80,0,160)
-RocketFrame.Position = UDim2.new(0.5,-40,0.6,0)
-RocketFrame.BackgroundTransparency = 1
-RocketFrame.ZIndex = 5 RocketFrame.Visible = false
-
--- Corps fusée
-local RocketBody = Instance.new("Frame", RocketFrame)
-RocketBody.Size = UDim2.new(0,60,0,110)
-RocketBody.Position = UDim2.new(0.5,-30,0,30)
-RocketBody.BackgroundColor3 = Color3.fromRGB(220,50,100)
-RocketBody.BorderSizePixel = 0 RocketBody.ZIndex = 6
-Instance.new("UICorner",RocketBody).CornerRadius = UDim.new(0,12)
-
--- Nez de fusée
-local RocketNose = Instance.new("Frame", RocketFrame)
-RocketNose.Size = UDim2.new(0,60,0,50)
-RocketNose.Position = UDim2.new(0.5,-30,0,0)
-RocketNose.BackgroundColor3 = Color3.fromRGB(240,70,120)
-RocketNose.BorderSizePixel = 0 RocketNose.ZIndex = 7
-Instance.new("UICorner",RocketNose).CornerRadius = UDim.new(0.5,0)
-
--- Hublot
-local RocketWindow = Instance.new("Frame", RocketFrame)
-RocketWindow.Size = UDim2.new(0,28,0,28)
-RocketWindow.Position = UDim2.new(0.5,-14,0,55)
-RocketWindow.BackgroundColor3 = Color3.fromRGB(100,200,255)
-RocketWindow.BackgroundTransparency = 0.1
-RocketWindow.BorderSizePixel = 0 RocketWindow.ZIndex = 8
-Instance.new("UICorner",RocketWindow).CornerRadius = UDim.new(1,0)
-local RocketWinRing = Instance.new("UIStroke", RocketWindow)
-RocketWinRing.Color = Color3.fromRGB(255,255,255) RocketWinRing.Thickness = 2
-
--- Ailettes
-local function mkFin(xOff, flip)
-    local f = Instance.new("Frame", RocketFrame)
-    f.Size = UDim2.new(0,22,0,35)
-    f.Position = UDim2.new(0.5, xOff, 0, 118)
-    f.BackgroundColor3 = Color3.fromRGB(180,30,80)
-    f.BorderSizePixel = 0 f.ZIndex = 5
-    Instance.new("UICorner",f).CornerRadius = UDim.new(0,6)
-    return f
-end
-mkFin(-42, false)
-mkFin(20,  true)
-
--- Flamme de la fusée
-local RocketFlame = Instance.new("Frame", RocketFrame)
-RocketFlame.Size = UDim2.new(0,40,0,60)
-RocketFlame.Position = UDim2.new(0.5,-20,0,140)
-RocketFlame.BackgroundColor3 = Color3.fromRGB(255,150,0)
-RocketFlame.BorderSizePixel = 0 RocketFlame.ZIndex = 6
-Instance.new("UICorner",RocketFlame).CornerRadius = UDim.new(0.5,0)
-
-local RocketFlame2 = Instance.new("Frame", RocketFrame)
-RocketFlame2.Size = UDim2.new(0,24,0,80)
-RocketFlame2.Position = UDim2.new(0.5,-12,0,150)
-RocketFlame2.BackgroundColor3 = Color3.fromRGB(255,220,50)
-RocketFlame2.BorderSizePixel = 0 RocketFlame2.ZIndex = 5
-Instance.new("UICorner",RocketFlame2).CornerRadius = UDim.new(0.5,0)
-
--- Label de statut intro
-local LoadingLbl = Instance.new("TextLabel", Bg)
-LoadingLbl.Size = UDim2.new(1,0,0,30)
-LoadingLbl.Position = UDim2.new(0,0,1,-50)
-LoadingLbl.BackgroundTransparency = 1
-LoadingLbl.Text = "Chargement..."
-LoadingLbl.TextColor3 = Color3.fromRGB(180,150,255)
-LoadingLbl.TextSize = 14
-LoadingLbl.Font = Enum.Font.Gotham
-LoadingLbl.TextXAlignment = Enum.TextXAlignment.Center
-LoadingLbl.ZIndex = 10
-
--- Barre de chargement
-local LoadBarBg = Instance.new("Frame", Bg)
-LoadBarBg.Size = UDim2.new(0,400,0,6)
-LoadBarBg.Position = UDim2.new(0.5,-200,1,-28)
-LoadBarBg.BackgroundColor3 = Color3.fromRGB(30,20,50)
-LoadBarBg.BorderSizePixel = 0 LoadBarBg.ZIndex = 10
-Instance.new("UICorner",LoadBarBg).CornerRadius = UDim.new(0,3)
-
-local LoadBarFill = Instance.new("Frame", LoadBarBg)
-LoadBarFill.Size = UDim2.new(0,0,1,0)
-LoadBarFill.BackgroundColor3 = Color3.fromRGB(150,80,255)
-LoadBarFill.BorderSizePixel = 0 LoadBarFill.ZIndex = 11
-Instance.new("UICorner",LoadBarFill).CornerRadius = UDim.new(0,3)
-
--- ══════════════════════════════════════
---  SÉQUENCE D'ANIMATION
--- ══════════════════════════════════════
-local function tw(obj, t, style, props)
-    local info = TweenService:Create(obj, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
-    info:Play()
-    return info
-end
-
-task.spawn(function()
-    -- Scintillement des étoiles
-    for _, st in ipairs(stars) do
-        task.spawn(function()
-            while Intro and Intro.Parent do
-                task.wait(math.random()*3)
-                tw(st, 0.5, Enum.EasingStyle.Sine, {BackgroundTransparency=math.random()*0.3})
-                task.wait(0.5)
-                tw(st, 0.5, Enum.EasingStyle.Sine, {BackgroundTransparency=math.random()*0.6+0.2})
-            end
-        end)
-    end
-
-    -- 1. Titre apparaît
-    task.wait(0.2)
-    LoadingLbl.Text = "Démarrage du moteur... 🔧"
-    tw(TitleIntro, 0.8, Enum.EasingStyle.Back, {TextTransparency=0})
-    task.wait(0.4)
-    tw(SubIntro, 0.6, Enum.EasingStyle.Quad, {TextTransparency=0})
-    task.wait(0.5)
-
-    -- 2. Barre de chargement phase 1
-    LoadingLbl.Text = "Chargement de la voiture... 🚗"
-    tw(LoadBarFill, 0.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0.35,0,1,0)})
-    task.wait(0.9)
-
-    -- 3. La voiture entre par la gauche
-    LoadingLbl.Text = "Voiture détectée ! 🚗💨"
-    tw(CarFrame, 1.2, Enum.EasingStyle.Back, {Position=UDim2.new(0.5,-100,1,-165)})
-    task.wait(0.8)
-
-    -- 4. Barre phase 2
-    tw(LoadBarFill, 0.5, Enum.EasingStyle.Quad, {Size=UDim2.new(0.6,0,1,0)})
-
-    -- 5. Rotation des roues (simulation)
-    task.wait(0.3)
-    LoadingLbl.Text = "Transformation en cours... ⚙️✨"
-    task.wait(0.3)
-
-    -- 6. La voiture tremble (transformation)
-    local origPos = UDim2.new(0.5,-100,1,-165)
-    for i = 1, 8 do
-        local shakeX = (i%2==0 and 6 or -6)
-        tw(CarFrame, 0.06, Enum.EasingStyle.Linear, {Position=UDim2.new(0.5,-100+shakeX,1,-165)})
-        task.wait(0.07)
-    end
-    tw(CarFrame, 0.1, Enum.EasingStyle.Linear, {Position=origPos})
-    task.wait(0.1)
-
-    -- 7. Éclair de transformation (flash blanc)
-    LoadingLbl.Text = "🌟 TRANSFORMATION ! 🌟"
-    local Flash = Instance.new("Frame", Bg)
-    Flash.Size=UDim2.new(1,0,1,0) Flash.BackgroundColor3=Color3.new(1,1,1)
-    Flash.BackgroundTransparency=0.1 Flash.BorderSizePixel=0 Flash.ZIndex=20
-    tw(Flash, 0.4, Enum.EasingStyle.Quad, {BackgroundTransparency=1})
-    task.wait(0.2)
-
-    -- 8. Cache la voiture, montre la fusée
-    CarFrame.Visible = false
-    Flash:Destroy()
-
-    RocketFrame.Visible = true
-    RocketFrame.Position = UDim2.new(0.5,-40,0.55,0)
-    RocketFrame.Size = UDim2.new(0,0,0,0)
-
-    tw(RocketFrame, 0.5, Enum.EasingStyle.Back, {
-        Size=UDim2.new(0,80,0,160),
-        Position=UDim2.new(0.5,-40,0.45,0)
-    })
-    task.wait(0.4)
-
-    -- 9. Barre phase 3
-    tw(LoadBarFill, 0.4, Enum.EasingStyle.Quad, {Size=UDim2.new(0.85,0,1,0)})
-    LoadingLbl.Text = "🚀 Fusée prête au décollage !"
-    task.wait(0.5)
-
-    -- 10. Flamme pulse
-    for i = 1, 4 do
-        tw(RocketFlame, 0.12, Enum.EasingStyle.Sine, {Size=UDim2.new(0,50,0,75)})
+    Btn.MouseButton1Click:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(200,150,255)}):Play()
         task.wait(0.12)
-        tw(RocketFlame, 0.12, Enum.EasingStyle.Sine, {Size=UDim2.new(0,35,0,55)})
-        task.wait(0.12)
+        TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(100, 45, 190)}):Play()
+        pcall(onClick)
+    end)
+    return Btn
+end
+
+-- ================================================
+-- HELPER : Séparateur titre de section
+-- ================================================
+local function createSection(title)
+    local Lbl = Instance.new("TextLabel", Content)
+    Lbl.Size = UDim2.new(1, 0, 0, 24)
+    Lbl.BackgroundTransparency = 1
+    Lbl.Text = "── " .. string.upper(title) .. " ──"
+    Lbl.TextColor3 = Color3.fromRGB(160, 100, 255)
+    Lbl.TextSize = 11
+    Lbl.Font = Enum.Font.GothamBold
+    Lbl.TextXAlignment = Enum.TextXAlignment.Center
+end
+
+-- ================================================
+-- ÉLÉMENTS DU MENU
+-- ================================================
+
+createSection("Personnage")
+
+createToggle("🚀", "Speed Boost", false, function(on)
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = on and 50 or 16 end
+end)
+
+createToggle("🦘", "Jump Boost", false, function(on)
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = on and 120 or 50 end
+end)
+
+createToggle("♾️", "Infinite Jump", false, function(on)
+    _G.InfJump = on
+end)
+
+createToggle("🌫️", "Noclip", false, function(on)
+    _G.Noclip = on
+end)
+
+createSection("Téléport")
+
+createButton("🏠", "Spawn", function()
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then hrp.CFrame = CFrame.new(0, 5, 0) end
+end)
+
+createButton("🔄", "Respawn", function()
+    player:LoadCharacter()
+end)
+
+createSection("Misc")
+
+createButton("💡", "Lumière max", function()
+    game:GetService("Lighting").Brightness = 10
+    game:GetService("Lighting").ClockTime = 14
+end)
+
+createButton("🗑️", "Reset Lighting", function()
+    game:GetService("Lighting").Brightness = 1
+    game:GetService("Lighting").ClockTime = 14
+end)
+
+-- ================================================
+-- INFINITE JUMP (RunService)
+-- ================================================
+UserInputService.JumpRequest:Connect(function()
+    if _G.InfJump then
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
+end)
 
-    -- 11. DÉCOLLAGE
-    LoadingLbl.Text = "🔥 3... 2... 1... DÉCOLLAGE 🔥"
-    task.wait(0.3)
-
-    -- Tremblement au sol avant décollage
-    for i = 1, 6 do
-        local sh = (i%2==0 and 4 or -4)
-        tw(RocketFrame, 0.05, Enum.EasingStyle.Linear, {
-            Position=UDim2.new(0.5,-40+sh, 0.45, 0)
-        })
-        task.wait(0.06)
-    end
-
-    -- La fusée décolle !
-    tw(RocketFrame, 1.8, Enum.EasingStyle.Quad, {
-        Position=UDim2.new(0.5,-40, -0.2, 0),
-        Size=UDim2.new(0,30,0,60)
-    })
-    tw(LoadBarFill, 0.6, Enum.EasingStyle.Quad, {Size=UDim2.new(1,0,1,0)})
-
-    -- Flamme qui grandit pendant le décollage
-    tw(RocketFlame, 1.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0,80,0,130)})
-    tw(RocketFlame2, 1.8, Enum.EasingStyle.Quad, {Size=UDim2.new(0,50,0,160)})
-
-    -- Traînée d'étoiles / particules (frames qui tombent)
-    for i = 1, 12 do
-        task.spawn(function()
-            task.wait(math.random()*1.2)
-            local spark = Instance.new("Frame", Bg)
-            spark.Size=UDim2.new(0,math.random(3,7),0,math.random(3,7))
-            spark.Position=UDim2.new(0.5,math.random(-30,30),0.45,0)
-            spark.BackgroundColor3=({
-                Color3.fromRGB(255,200,50),
-                Color3.fromRGB(255,100,30),
-                Color3.fromRGB(255,255,150),
-            })[math.random(1,3)]
-            spark.BorderSizePixel=0 spark.ZIndex=15
-            Instance.new("UICorner",spark).CornerRadius=UDim.new(1,0)
-            tw(spark, 0.8, Enum.EasingStyle.Quad, {
-                Position=UDim2.new(0.5,math.random(-60,60),0.8,0),
-                BackgroundTransparency=1,
-                Size=UDim2.new(0,1,0,1)
-            })
-            task.wait(0.9)
-            spark:Destroy()
-        end)
-    end
-
-    task.wait(1.2)
-
-    -- 12. LoadingLbl final
-    LoadingLbl.Text = "✅ Brainrot HUB prêt !"
-    LoadingLbl.TextColor3 = Color3.fromRGB(100,255,150)
-    task.wait(0.5)
-
-    -- 13. Fade out de l'intro
-    tw(Bg, 0.6, Enum.EasingStyle.Quad, {BackgroundTransparency=1})
-    for _, obj in ipairs(Bg:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("Frame") then
-            pcall(function()
-                if obj:IsA("TextLabel") then
-                    TweenService:Create(obj, TweenInfo.new(0.5), {TextTransparency=1}):Play()
-                else
-                    TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundTransparency=1}):Play()
-                end
-            end)
+-- ================================================
+-- NOCLIP (RunService)
+-- ================================================
+RunService.Stepped:Connect(function()
+    if _G.Noclip and player.Character then
+        for _, part in ipairs(player.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
         end
     end
-    task.wait(0.7)
-    Intro:Destroy()
+end)
 
-    -- 14. Le HUB apparaît !
-    Main.Visible = true
-    Main.Size=UDim2.new(0,0,0,0)
-    Main.Position=UDim2.new(0,175,0.5,0)
-    TweenService:Create(Main,TweenInfo.new(0.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-        Size=UDim2.new(0,320,0,500),
-        Position=UDim2.new(0,15,0.5,-250)
+-- ================================================
+-- MINIMISER / FERMER
+-- ================================================
+local minimized = false
+
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    Content.Visible = not minimized
+    TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+        Size = minimized and UDim2.new(0, 340, 0, 46) or UDim2.new(0, 340, 0, 480)
     }):Play()
-
-    setStatus("✅ Brainrot HUB chargé ! [H] = cacher",Color3.fromRGB(150,120,255))
 end)
-print("╔══════════════════════════════════════╗")
-print("║      BRAINROT HUB — Xeno Edition     ║")
-print("╠══════════════════════════════════════╣")
-print("║  [H] = Afficher/Cacher le GUI        ║")
-print("║  [F] = TP rapide vers ta base        ║")
-print("║  Tabs: TP / ESP / MOVES / FARM /     ║")
-print("║         ALERT / DEBUG                ║")
-print("╚══════════════════════════════════════╝")
+
+CloseBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(MainFrame, TweenInfo.new(0.2), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0)
+    }):Play()
+    task.wait(0.25)
+    ScreenGui:Destroy()
+end)
+
+-- ================================================
+-- TOUCHE M — Afficher / Cacher
+-- ================================================
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.M then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+end)
+
+print("✅ MenuGUI injecté avec succès ! [M] pour afficher/cacher")
